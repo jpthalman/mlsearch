@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict
 from typing_extensions import Self
 
+import scenario_parsing_utils
 import pytorch_lightning as pl
 import torch
 from av2.datasets.motion_forecasting.scenario_serialization import (
@@ -11,26 +12,6 @@ from av2.datasets.motion_forecasting.scenario_serialization import (
 )
 from av2.map.map_api import ArgoverseStaticMap
 from torch.utils.data import DataLoader, Dataset
-
-
-class Dim(enum.IntEnum):
-    # Max agents
-    A = 32
-    # Time dimension size
-    T = 11
-    # Agent state size
-    S = 42
-    # Max agent interactions
-    Ai = 8
-    # Number of roadgraph features per agent
-    R = 32
-    # Dimension of roadgraph features
-    Rd = 32
-    # Dimension of the controls that can be applied to the vehicle
-    C = 2
-    # Discretization of each control dimension
-    Cd = 16
-
 
 class AV2DataModule(pl.LightningDataModule):
     def __init__(self: Self, *, batch_size: int) -> None:
@@ -76,7 +57,7 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
         return dict(
             scenario_name=info["scenario_name"],
             agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),
-            agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.Ai]),
+            agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_mask=torch.zeros([Dim.A, Dim.T]),
             roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd]),
             ground_truth_control=torch.zeros([Dim.A, Dim.T - 1, Dim.C]),
