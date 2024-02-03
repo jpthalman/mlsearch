@@ -1,0 +1,16 @@
+name: mlsearch
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - attrs
+  - av2
+  - pandas==2.0.3
+  - numpy
+  - python=3.10
+  - pytorch
+  - pytorch-cuda=12.1
+  - pytorch-lightning
+  - tqdm
