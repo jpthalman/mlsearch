@@ -97,9 +97,11 @@ class ParsedScenario:
                 agent_history_at_track_idx_at_time_idx = []
                 if track_idx < len(self.relevant_tracks) - 1:
                     track_object_state_at_timestep = _track_object_state_to_list_at_timestep(self.relevant_tracks[track_idx], timestep)
-                    agent_history_at_track_idx_at_time_idx.append(track_object_state_at_timestep)
+                    for elem in track_object_state_at_timestep:
+                        agent_history_at_track_idx_at_time_idx.append(elem)
                 else:
-                    agent_history_at_track_idx_at_time_idx.append([0] * Dim.S)
+                    for idx in range(Dim.S):
+                        agent_history_at_track_idx_at_time_idx.append(0)
                 agent_history_at_track_idx.append(agent_history_at_track_idx_at_time_idx)
             agent_history_list.append(agent_history_at_track_idx)
 
@@ -141,6 +143,7 @@ def main():
     parquet_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/scenario_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.parquet"
     map_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/log_map_archive_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.json"
     parsed_scenario = ParsedScenario(parquet_file_path, map_file_path)
+    print(parsed_scenario.agent_history.shape)
 
 
 if __name__ == "__main__":
