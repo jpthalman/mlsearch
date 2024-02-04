@@ -22,9 +22,9 @@ class Dim(enum.IntEnum):
     # Max agents
     A = 128
     # Time dimension size
-    T = 11
+    T = 110
     # Agent state size
-    S = 7
+    S = 8
     # Max agent interactions
     Ai = 16
     # Number of roadgraph features per agent
@@ -64,14 +64,18 @@ class ParsedScenario:
             if track.track_id == self.scenario.focal_track_id:
                 return track
 
-    def find_n_closest_tracks_to_track(self: Self, reference_track: Track, n: int, timestep_idx: int) -> List[Track]:
+    def find_n_closest_tracks_to_track(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
         closest_tracks = []
+        reference_dilated_track_object_states = _dilated_track_object_states(reference_track)
         for track in self.scenario.tracks:
             if track.track_id != reference_track.track_id:
-                current_object_state = track.object_states[timestep_idx]
-                if current_object_state.observed:
-                    distance_to_reference = _distance_between_states(current_object_state, reference_track.object_states[timestep_idx])
-                    heapq.heappush(closest_tracks, (distance_to_reference, track))
+                dilated_track_object_states = _dilated_track_object_states(track)
+                current_object_state = dilated_track_object_states[timestep]
+                if current_object_state == 0:
+                    # indicates state is not present at this timestep
+                    continue
+                distance_to_reference = _distance_between_states(current_object_state, reference_dilated_track_object_states[timestep])
+                heapq.heappush(closest_tracks, (distance_to_reference, track))
 
         if len(closest_tracks) > n:
             closest_tracks = heapq.nsmallest(n, closest_tracks)
@@ -89,10 +93,10 @@ class ParsedScenario:
 
         for track_idx in range(Dim.A):
             agent_history_at_track_idx = []
-            for timestep_idx in range(Dim.T):
+            for timestep in range(Dim.T):
                 agent_history_at_track_idx_at_time_idx = []
                 if track_idx < len(self.relevant_tracks) - 1:
-                    track_object_state_at_timestep = _track_object_state_to_list_at_timestep_idx(self.relevant_tracks[track_idx], timestep_idx)
+                    track_object_state_at_timestep = _track_object_state_to_list_at_timestep(self.relevant_tracks[track_idx], timestep)
                     agent_history_at_track_idx_at_time_idx.append(track_object_state_at_timestep)
                 else:
                     agent_history_at_track_idx_at_time_idx.append([0] * Dim.S)
@@ -100,23 +104,21 @@ class ParsedScenario:
             agent_history_list.append(agent_history_at_track_idx)
 
         agent_history_tensor = torch.Tensor(agent_history_list)
-        return torch.unsaueeze(agent_history_tensor, 2)
-
-
-
+        return torch.unsqueeze(agent_history_tensor, 2)
 
 def _distance_between_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
     position_1 = object_state_1.position
     position_2 = object_state_2.position
     return math.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
 
-# Object state list: [focal_frame_x, focal_frame_y, heading, vx, vy, object_type, track_category]
-def _track_object_state_to_list_at_timestep_idx(track: Track, timestep_idx: int) -> List:
-    print("timestep idx: " + str(timestep_idx))
-    print(type(track))
-    print("len object states: " + str(len(track.object_states)))
-    object_state = track.object_states[timestep_idx]
+# Object state list: [observed, focal_frame_x, focal_frame_y, heading, vx, vy, object_type, track_category]
+def _track_object_state_to_list_at_timestep(track: Track, timestep: int) -> List:
+    object_state = _dilated_track_object_states(track)[timestep]
+    if object_state == 0:
+        # This indicates the track has no object state at the timestep. Return all 0 values.
+        return [0] * Dim.S
     object_state_list = []
+    object_state_list.append(float(object_state.observed))
     object_state_list.append(object_state.position[0])
     object_state_list.append(object_state.position[1])
     object_state_list.append(object_state.heading)
@@ -124,6 +126,13 @@ def _track_object_state_to_list_at_timestep_idx(track: Track, timestep_idx: int)
     object_state_list.append(object_state.velocity[1])
     object_state_list.append(_get_enum_int(track.object_type))
     object_state_list.append(track.category.value)
+    return object_state_list
+
+def _dilated_track_object_states(track: Track) -> List[ObjectState]:
+    dilated_track_object_states = [0] * Dim.T
+    for object_state in track.object_states:
+        dilated_track_object_states[object_state.timestep] = object_state
+    return dilated_track_object_states
 
 def _get_enum_int(enum_member):
     return list(ObjectType).index(enum_member) + 1
