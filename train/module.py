@@ -13,14 +13,30 @@ from model.world_model import WorldModel
 
 
 class MLSearchModule(pl.LightningModule):
-    LEARNING_RATE = 0.01
+    # Model params
+    NUM_ENCODER_LAYERS = 4
+    EMBEDDING_DIM = 128
+    HIDDEN_MULTIPLIER = 2
+    LQ_RATIO = 0.25
+    NUM_HEADS = 8
+    DROPOUT = 0.1
+
+    # Optimizer params
+    LEARNING_RATE = 2e-4
     WEIGHT_DECAY = 0.01
 
     def __init__(self: Self) -> None:
         super().__init__()
-        self.scene_encoder = SceneEncoder()
-        self.control_predictor = ControlPredictor()
-        self.world_model = WorldModel()
+        self.scene_encoder = SceneEncoder(
+            num_layers=self.NUM_ENCODER_LAYERS,
+            embed_dim=self.EMBEDDING_DIM,
+            hidden_mult=self.HIDDEN_MULTIPLIER,
+            latent_query_ratio=self.LQ_RATIO,
+            num_heads=self.NUM_HEADS,
+            dropout=self.DROPOUT,
+        )
+        self.control_predictor = ControlPredictor(self.EMBEDDING_DIM)
+        self.world_model = WorldModel(self.EMBEDDING_DIM)
 
         self.embedding_loss = torch.nn.CosineEmbeddingLoss()
         self.control_loss = torch.nn.CrossEntropyLoss()
@@ -105,22 +121,16 @@ class MLSearchModule(pl.LightningModule):
             weight_decay=self.WEIGHT_DECAY,
             fused=True,
         )
-        s0 = LinearLR(
-            optimizer,
-            start_factor=0.5,
-            end_factor=1.0,
-            total_iters=max(int(0.1 * self.trainer.max_epochs), 1),
-        )
-        s1 = LinearLR(
+        scheduler = LinearLR(
             optimizer,
             start_factor=1.0,
             end_factor=0.0,
-            total_iters=self.trainer.max_epochs - s0.total_iters,
+            total_iters=self.trainer.max_epochs,
         )
         return dict(
             optimizer=optimizer,
             lr_scheduler=dict(
-                scheduler=SequentialLR(optimizer, [s0, s1], [s0.total_iters]),
+                scheduler=scheduler,
                 interval="epoch",
                 frequency=1,
             ),
