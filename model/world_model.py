@@ -5,9 +5,12 @@ from torch import nn
 
 
 class WorldModel(nn.Module):
-    def __init__(self: Self) -> None:
+    def __init__(
+        self: Self,
+        embed_dim: int,
+    ) -> None:
         super().__init__()
-        self.naive = nn.Linear(128, 128)
+        self.naive = nn.Linear(embed_dim, embed_dim)
 
     def forward(
         self: Self,

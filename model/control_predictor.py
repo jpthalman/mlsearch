@@ -7,9 +7,12 @@ from data.data_module import Dim
 
 
 class ControlPredictor(nn.Module):
-    def __init__(self: Self) -> None:
+    def __init__(
+        self: Self,
+        embed_dim: int,
+    ) -> None:
         super().__init__()
-        self.naive = nn.Linear(128, Dim.Cd**2)
+        self.naive = nn.Linear(embed_dim, Dim.Cd**2)
 
     def forward(self: Self, scene_embedding: torch.Tensor) -> torch.Tensor:
         """

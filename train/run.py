@@ -35,15 +35,13 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-
 def configure_logger(args: argparse.Namespace) -> pl.loggers.CometLogger | None:
     API_KEYS = dict(
         jthalman="QpbkK2X7dvOnkqJHqvuRwBLKL",
     )
     key = API_KEYS.get(getpass.getuser(), None)
     if key is None:
-        print(API_KEY_WARNING)
-        return
+        raise RuntimeError(API_KEY_WARNING)
     if not args.for_real:
         return
     return pl.loggers.CometLogger(

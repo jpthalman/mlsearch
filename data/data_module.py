@@ -15,13 +15,13 @@ from torch.utils.data import DataLoader, Dataset
 
 class Dim(enum.IntEnum):
     # Max agents
-    A = 32
+    A = 128
     # Time dimension size
     T = 11
     # Agent state size
-    S = 42
+    S = 7
     # Max agent interactions
-    Ai = 8
+    Ai = 16
     # Number of roadgraph features per agent
     R = 32
     # Dimension of roadgraph features
@@ -76,7 +76,7 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
         return dict(
             scenario_name=info["scenario_name"],
             agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),
-            agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.Ai]),
+            agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_mask=torch.zeros([Dim.A, Dim.T]),
             roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd]),
             ground_truth_control=torch.zeros([Dim.A, Dim.T - 1, Dim.C]),
