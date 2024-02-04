@@ -1,7 +1,10 @@
 import enum
+import heapq
 import math
 import torch
+from pathlib import Path
 from typing import List
+from typing_extensions import Self
 
 from av2.datasets.motion_forecasting.data_schema import (
     ArgoverseScenario,
@@ -9,6 +12,9 @@ from av2.datasets.motion_forecasting.data_schema import (
     ObjectState,
     ObjectType,
     TrackCategory,
+)
+from av2.datasets.motion_forecasting.scenario_serialization import (
+    load_argoverse_scenario_parquet
 )
 from av2.map.map_api import ArgoverseStaticMap
 
@@ -31,9 +37,9 @@ class Dim(enum.IntEnum):
     Cd = 16
 
 class ParsedScenario:
-    def __init__(self: Self, scenario: ArgoverseScenario, static_map: ArgoverseStaticMap):
-        self.scenario = scenario
-        self.static_map = static_map
+    def __init__(self: Self, scenario_path: str, map_path: str):
+        self.scenario = load_argoverse_scenario_parquet(Path(scenario_path))
+        self.static_map = ArgoverseStaticMap.from_json(Path(map_path))
 
         self.focal_track = self.find_focal_track()
 
@@ -55,7 +61,7 @@ class ParsedScenario:
 
     def find_focal_track(self: Self) -> Track:
         for track in self.scenario.tracks:
-            if track.track_id == scenario.focal_track_id:
+            if track.track_id == self.scenario.focal_track_id:
                 return track
 
     def find_n_closest_tracks_to_track(self: Self, reference_track: Track, n: int, timestep_idx: int) -> List[Track]:
@@ -70,7 +76,10 @@ class ParsedScenario:
         if len(closest_tracks) > n:
             closest_tracks = heapq.nsmallest(n, closest_tracks)
 
-        return closest_tracks
+        def get_track_from_tuple(tuple):
+            return tuple[1]
+
+        return list(map(get_track_from_tuple, closest_tracks))
 
     # Agent history tensor shape: [Dim.A, Dim.T, 1, Dim.S]
     def construct_agent_history_tensor(self: Self):
@@ -99,10 +108,13 @@ class ParsedScenario:
 def _distance_between_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
     position_1 = object_state_1.position
     position_2 = object_state_2.position
-    return math.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1]**2))
+    return math.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
 
 # Object state list: [focal_frame_x, focal_frame_y, heading, vx, vy, object_type, track_category]
 def _track_object_state_to_list_at_timestep_idx(track: Track, timestep_idx: int) -> List:
+    print("timestep idx: " + str(timestep_idx))
+    print(type(track))
+    print("len object states: " + str(len(track.object_states)))
     object_state = track.object_states[timestep_idx]
     object_state_list = []
     object_state_list.append(object_state.position[0])
@@ -111,7 +123,16 @@ def _track_object_state_to_list_at_timestep_idx(track: Track, timestep_idx: int)
     object_state_list.append(object_state.velocity[0])
     object_state_list.append(object_state.velocity[1])
     object_state_list.append(_get_enum_int(track.object_type))
-    object_state_list.append(_get_enum_int(track.category))
+    object_state_list.append(track.category.value)
 
 def _get_enum_int(enum_member):
     return list(ObjectType).index(enum_member) + 1
+
+def main():
+    parquet_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/scenario_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.parquet"
+    map_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/log_map_archive_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.json"
+    parsed_scenario = ParsedScenario(parquet_file_path, map_file_path)
+
+
+if __name__ == "__main__":
+    main()
