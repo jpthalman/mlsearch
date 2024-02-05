@@ -16,12 +16,12 @@ from av2.datasets.motion_forecasting.scenario_serialization import (
 )
 from av2.map.map_api import ArgoverseStaticMap
 
-from scenario_introspection_utils import (
+from scenario_tensor_converter_utils import (
     distance_between_object_states,
     Dim,
-    track_object_state_to_list_at_timestep,
-    dilate_track_object_states,
-    object_state_to_string
+    state_feature_list,
+    object_state_at_timestep,
+    object_state_to_string,
 )
 
 """
@@ -75,15 +75,13 @@ class ScenarioTensorConverter:
 
     def n_closest_tracks_to_track(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
         closest_tracks = []
-        reference_dilated_track_object_states = dilate_track_object_states(reference_track)
         for track in self.scenario.tracks:
             if track.track_id != reference_track.track_id:
-                dilated_track_object_states = dilate_track_object_states(track)
-                current_object_state = dilated_track_object_states[timestep]
-                if current_object_state == 0:
+                current_object_state = object_state_at_timestep(track, timestep)
+                if current_object_state is None:
                     # indicates state is not present at this timestep
                     continue
-                distance_to_reference = distance_between_object_states(current_object_state, reference_dilated_track_object_states[timestep])
+                distance_to_reference = distance_between_object_states(current_object_state, object_state_at_timestep(reference_track, timestep))
                 heapq.heappush(closest_tracks, (distance_to_reference, track))
 
         if len(closest_tracks) > n:
@@ -103,9 +101,15 @@ class ScenarioTensorConverter:
             for timestep in range(Dim.T):
                 agent_history_at_track_idx_at_time_idx = []
                 if track_idx < len(self.relevant_tracks) - 1:
-                    track_object_state_at_timestep = track_object_state_to_list_at_timestep(self.relevant_tracks[track_idx], timestep)
-                    for elem in track_object_state_at_timestep:
-                        agent_history_at_track_idx_at_time_idx.append(elem)
+                    track = self.relevant_tracks[track_idx]
+                    object_state = object_state_at_timestep(track, timestep)
+                    if object_state is not None:
+                        state_features = state_feature_list(object_state, track)
+                        for feature in state_features:
+                            agent_history_at_track_idx_at_time_idx.append(feature)
+                    else:
+                        for idx in range(Dim.S):
+                            agent_history_at_track_idx_at_time_idx.append(0)
                 else:
                     for idx in range(Dim.S):
                         agent_history_at_track_idx_at_time_idx.append(0)

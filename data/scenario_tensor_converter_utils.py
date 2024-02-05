@@ -26,17 +26,34 @@ class Dim(enum.IntEnum):
     # Discretization of each control dimension
     Cd = 16
 
+"""
+Computes the euclidean distance between two object states.
+
+Parameters
+----------
+object_state_1 : ObjectState
+object_state_2 : ObjectState
+
+Returns
+-------
+Euclidean distance between the two object states.
+"""
 def distance_between_object_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
     position_1 = object_state_1.position
     position_2 = object_state_2.position
     return math.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
 
-# Object state list: [observed, ego_frame_x, ego_frame_y, heading, vx, vy, object_type, track_category]
-def track_object_state_to_list_at_timestep(track: Track, timestep: int) -> List:
-    object_state = dilate_track_object_states(track)[timestep]
-    if object_state == 0:
-        # This indicates the track has no object state at the timestep. Return all 0 values.
-        return [0] * Dim.S
+"""
+Constructs a state feature list from an object state and track.
+
+Args:
+    object_state (ObjectState) : Used for inertial data.
+    track (Track) : Used for object type and track category.
+
+Returns:
+    List: [observed, x, y, heading, vx, vy, object_type, track_category]
+"""
+def state_feature_list(object_state: ObjectState, track: Track) -> List:
     object_state_list = []
     object_state_list.append(float(object_state.observed))
     object_state_list.append(object_state.position[0])
@@ -48,11 +65,11 @@ def track_object_state_to_list_at_timestep(track: Track, timestep: int) -> List:
     object_state_list.append(track.category.value)
     return object_state_list
 
-def dilate_track_object_states(track: Track) -> List[ObjectState]:
-    dilated_track_object_states = [0] * Dim.T
+def object_state_at_timestep(track: Track, timestep: int) -> List[ObjectState]:
     for object_state in track.object_states:
-        dilated_track_object_states[object_state.timestep] = object_state
-    return dilated_track_object_states
+        if object_state.timestep == timestep:
+            return object_state
+    return None
 
 def object_state_to_string(object_state: ObjectState) -> str:
     object_state_str = "object_state: ["
