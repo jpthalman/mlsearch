@@ -131,5 +131,17 @@ def main():
     scenario_tensor_converter = ScenarioTensorConverter(parquet_file_path, map_file_path)
     print(scenario_tensor_converter.agent_history.shape)
 
+    # print out ego track using the ego track object
+    print(object_state_to_string(scenario_tensor_converter.ego_track.object_states[0]))
+    # print out agent history of first row in the agent history tensor
+    print("Ego Tensor Output: ")
+    print(scenario_tensor_converter.agent_history[0][0][0])
+
+    # print out focal track using the focal track object
+    focal_track = scenario_tensor_converter.track_from_track_id(scenario_tensor_converter.scenario.focal_track_id)
+    focal_object_state = object_state_at_timestep(focal_track, 0)
+    print(state_feature_list(focal_object_state, focal_track))
+
+
 if __name__ == "__main__":
     main()
