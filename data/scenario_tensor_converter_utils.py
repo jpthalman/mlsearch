@@ -8,6 +8,9 @@ from av2.datasets.motion_forecasting.data_schema import (
     ObjectType,
 )
 
+"""
+Enum for configured dimensions of scenario tensors.
+"""
 class Dim(enum.IntEnum):
     # Max agents
     A = 128
@@ -65,12 +68,31 @@ def state_feature_list(object_state: ObjectState, track: Track) -> List:
     object_state_list.append(track.category.value)
     return object_state_list
 
-def object_state_at_timestep(track: Track, timestep: int) -> List[ObjectState]:
+"""
+Iterates through object states of a track to find the one associated with the
+provided timestep.
+
+Args:
+    track (Track): track to query
+    timestep (int): timestep to query
+
+Returns:
+    ObjectState or None: ObjectState if one is found and None otherwise.
+"""
+def object_state_at_timestep(track: Track, timestep: int) -> ObjectState:
     for object_state in track.object_states:
         if object_state.timestep == timestep:
             return object_state
     return None
 
+"""
+Converts an object state to a string.
+
+Args:
+    object_state (ObjectState): object state to convert.
+Returns:
+    str: String representation of object state.
+"""
 def object_state_to_string(object_state: ObjectState) -> str:
     object_state_str = "object_state: ["
     object_state_str += ("observed: " + str(object_state.observed))
@@ -82,5 +104,13 @@ def object_state_to_string(object_state: ObjectState) -> str:
     object_state_str += "]"
     return object_state_str
 
-def _get_enum_int(enum_member):
+"""
+Converts an ObjectType enum to an integer value.
+
+Args:
+    enum_member: Object type enum to convert
+Returns:
+    int: Integer representation of ObjectType enum.
+"""
+def _get_enum_int(enum_member: ObjectType) -> int:
     return list(ObjectType).index(enum_member) + 1

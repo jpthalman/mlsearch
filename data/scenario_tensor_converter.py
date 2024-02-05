@@ -73,6 +73,7 @@ class ScenarioTensorConverter:
             if track.track_id == track_id:
                 return track
 
+    """Returns the n closest tracks to a reference track at a given timestep"""
     def n_closest_tracks_to_track(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
         closest_tracks = []
         for track in self.scenario.tracks:
@@ -101,6 +102,7 @@ class ScenarioTensorConverter:
             for timestep in range(Dim.T):
                 agent_history_at_track_idx_at_time_idx = []
                 if track_idx < len(self.relevant_tracks) - 1:
+                    # Nominal case of adding features.
                     track = self.relevant_tracks[track_idx]
                     object_state = object_state_at_timestep(track, timestep)
                     if object_state is not None:
@@ -108,9 +110,13 @@ class ScenarioTensorConverter:
                         for feature in state_features:
                             agent_history_at_track_idx_at_time_idx.append(feature)
                     else:
+                        # Case where there is no object state for this track at
+                        # this timestep.
                         for idx in range(Dim.S):
                             agent_history_at_track_idx_at_time_idx.append(0)
                 else:
+                    # Case where there is no object state for this track at
+                    # this timestep.
                     for idx in range(Dim.S):
                         agent_history_at_track_idx_at_time_idx.append(0)
                 agent_history_at_track_idx.append(agent_history_at_track_idx_at_time_idx)
@@ -124,13 +130,6 @@ def main():
     map_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/log_map_archive_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.json"
     scenario_tensor_converter = ScenarioTensorConverter(parquet_file_path, map_file_path)
     print(scenario_tensor_converter.agent_history.shape)
-
-    # print out ev track using the ev track object
-    # print(object_state_to_string(scenario_introspector.ev_track.object_states[-1]))
-    # print out agent history of first row in the agent history tensor
-    # print("Tensor Output: ")
-    # print(scenario_introspector.agent_history[0])
-
 
 if __name__ == "__main__":
     main()
