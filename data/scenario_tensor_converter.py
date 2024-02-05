@@ -49,7 +49,7 @@ class ScenarioTensorConverter:
         # element.
         # Note: We use the first timestep for selection of relevant tracks. This
         # has its drawbacks but will help us get started.
-        self.relevant_tracks = self.n_closest_tracks_to_track(self.ego_track, Dim.A - 1, 0)
+        self.relevant_tracks = self.n_closest_tracks(self.ego_track, Dim.A - 1, 0)
         self.relevant_tracks.insert(0, self.ego_track)
 
         # This tensor represents the trace histories of all relevant agents. If
@@ -74,7 +74,7 @@ class ScenarioTensorConverter:
                 return track
 
     """Returns the n closest tracks to a reference track at a given timestep"""
-    def n_closest_tracks_to_track(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
+    def n_closest_tracks(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
         closest_tracks = []
         for track in self.scenario.tracks:
             if track.track_id != reference_track.track_id:
