@@ -24,7 +24,7 @@ from scenario_introspection_utils import (
 )
 from av2.map.map_api import ArgoverseStaticMap
 
-class ArgoverseScenarioIntrospector:
+class ScenarioIntrospector:
     def __init__(self: Self, scenario_path: str, map_path: str):
         self.scenario = load_argoverse_scenario_parquet(Path(scenario_path))
         self.static_map = ArgoverseStaticMap.from_json(Path(map_path))
@@ -99,7 +99,7 @@ class ArgoverseScenarioIntrospector:
 def main():
     parquet_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/scenario_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.parquet"
     map_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/log_map_archive_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.json"
-    scenario_introspector = ArgoverseScenarioIntrospector(parquet_file_path, map_file_path)
+    scenario_introspector = ScenarioIntrospector(parquet_file_path, map_file_path)
     print(scenario_introspector.agent_history.shape)
 
     # print out ev track using the ev track object
