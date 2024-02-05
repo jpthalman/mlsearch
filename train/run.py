@@ -70,7 +70,7 @@ def main() -> None:
         enable_checkpointing=args.for_real,
         default_root_dir=output_root,
     )
-    trainer.fit(model, datamodule=AV2DataModule(batch_size=16))
+    trainer.fit(model, datamodule=AV2DataModule(batch_size=8))
 
 
 if __name__ == "__main__":

@@ -35,7 +35,12 @@ class MLSearchModule(pl.LightningModule):
             num_heads=self.NUM_HEADS,
             dropout=self.DROPOUT,
         )
-        self.control_predictor = ControlPredictor(self.EMBEDDING_DIM)
+        self.control_predictor = ControlPredictor(
+            embed_dim=self.EMBEDDING_DIM,
+            hidden_mult=self.HIDDEN_MULTIPLIER,
+            num_heads=self.NUM_HEADS,
+            dropout=self.DROPOUT,
+        )
         self.world_model = WorldModel(self.EMBEDDING_DIM)
 
         self.embedding_loss = torch.nn.CosineEmbeddingLoss()
@@ -71,8 +76,8 @@ class MLSearchModule(pl.LightningModule):
         # TODO
         pred_control_dist = self.control_predictor(scene_embedding)
         control_loss = self.control_loss(
-            pred_control_dist[:, :, :-1, :].reshape(D, Dim.Cd**2),
-            batch["ground_truth_control_dist"].view(D, Dim.Cd**2),
+            pred_control_dist[:, :-1, :],
+            batch["ground_truth_control_dist"],
         )
 
         scene_embedding = scene_embedding.mean()
