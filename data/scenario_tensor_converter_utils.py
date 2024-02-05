@@ -26,7 +26,7 @@ class Dim(enum.IntEnum):
     # Discretization of each control dimension
     Cd = 16
 
-def distance_between_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
+def distance_between_object_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
     position_1 = object_state_1.position
     position_2 = object_state_2.position
     return math.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
