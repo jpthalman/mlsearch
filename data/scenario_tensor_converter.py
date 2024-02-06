@@ -115,8 +115,7 @@ class ScenarioTensorConverter:
                         for idx in range(Dim.S):
                             agent_history_at_track_idx_at_time_idx.append(0)
                 else:
-                    # Case where there is no object state for this track at
-                    # this timestep.
+                    # Case where there are fewer available tracks than Dim.A
                     for idx in range(Dim.S):
                         agent_history_at_track_idx_at_time_idx.append(0)
                 agent_history_at_track_idx.append(agent_history_at_track_idx_at_time_idx)
