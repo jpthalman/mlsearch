@@ -1,34 +1,40 @@
 from typing_extensions import Self
 
+import attrs
 import torch
 from torch import nn
 
 from model.dense_block import DenseBlock
 
 
+@attrs.frozen(kw_only=True)
+class TransformerConfig:
+    embed_dim: int
+    hidden_dim: int
+    num_heads: int
+    dropout: float
+
+
 class TransformerBlock(nn.Module):
     def __init__(
         self: Self,
         *,
-        input_dim: int,
-        hidden_dim: int,
-        num_heads: int,
-        dropout: float,
+        config: TransformerConfig,
     ) -> None:
         super().__init__()
         self.attn = nn.MultiheadAttention(
-            embed_dim=input_dim,
-            num_heads=num_heads,
+            embed_dim=config.embed_dim,
+            num_heads=config.num_heads,
             batch_first=True,
         )
         self.dense = DenseBlock(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            output_dim=input_dim,
-            dropout=dropout,
+            input_dim=config.embed_dim,
+            hidden_dim=config.hidden_dim,
+            output_dim=config.embed_dim,
+            dropout=config.dropout,
         )
-        self.attn_norm = nn.LayerNorm(input_dim)
-        self.dense_norm = nn.LayerNorm(input_dim)
+        self.attn_norm = nn.LayerNorm(config.embed_dim)
+        self.dense_norm = nn.LayerNorm(config.embed_dim)
 
     def forward(
         self: Self,
@@ -50,18 +56,10 @@ class SelfAttentionBlock(nn.Module):
     def __init__(
         self: Self,
         *,
-        input_dim: int,
-        hidden_dim: int,
-        num_heads: int,
-        dropout: float,
+        config: TransformerConfig,
     ) -> None:
         super().__init__()
-        self.transformer = TransformerBlock(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-        )
+        self.transformer = TransformerBlock(config=config)
 
     def forward(
         self: Self,
@@ -79,20 +77,12 @@ class LatentQueryAttentionBlock(nn.Module):
         self: Self,
         *,
         latent_query_length: int,
-        input_dim: int,
-        hidden_dim: int,
-        num_heads: int,
-        dropout: float,
+        config: TransformerConfig,
     ) -> None:
         super().__init__()
-        self.transformer = TransformerBlock(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-        )
+        self.transformer = TransformerBlock(config=config)
         self.latent_query = nn.Parameter(
-            torch.empty([1, latent_query_length, input_dim])
+            torch.empty([1, latent_query_length, config.embed_dim])
         )
 
         # Initialize the weights of the latent query
@@ -121,23 +111,15 @@ class DynamicLatentQueryAttentionBlock(nn.Module):
         *,
         sequence_length: int,
         latent_query_length: int,
-        input_dim: int,
-        hidden_dim: int,
-        num_heads: int,
-        dropout: float,
+        config: TransformerConfig,
     ) -> None:
         super().__init__()
-        self.transformer = TransformerBlock(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-        )
+        self.transformer = TransformerBlock(config=config)
         self.dense = DenseBlock(
             input_dim=sequence_length,
             hidden_dim=latent_query_length,
             output_dim=latent_query_length,
-            dropout=dropout,
+            dropout=config.dropout,
         )
 
     def forward(

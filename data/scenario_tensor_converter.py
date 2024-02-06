@@ -16,9 +16,9 @@ from av2.datasets.motion_forecasting.scenario_serialization import (
 )
 from av2.map.map_api import ArgoverseStaticMap
 
-from scenario_tensor_converter_utils import (
+from data.dimensions import Dim
+from data.scenario_tensor_converter_utils import (
     distance_between_object_states,
-    Dim,
     state_feature_list,
     object_state_at_timestep,
     object_state_to_string,
@@ -59,13 +59,13 @@ class ScenarioTensorConverter:
         self.agent_history = self.construct_agent_history_tensor()
 
         # TODO: Populate below tensors. Default tensors values to zero
-        self.agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S])
-        self.agent_mask=torch.zeros([Dim.A, Dim.T])
+        self.agent_interactions=torch.zeros([Dim.A, 10 * Dim.T, Dim.Ai, Dim.S])
+        self.agent_mask=torch.zeros([Dim.A, 10 * Dim.T])
         self.roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd])
 
         # TODO: Change to only use Ego controls.
-        self.ground_truth_control=torch.zeros([Dim.A, Dim.T - 1, Dim.C])
-        self.ground_truth_control_dist=torch.zeros([Dim.A, Dim.T - 1, Dim.Cd**2])
+        self.ground_truth_control=torch.zeros([Dim.A, (10 * Dim.T) - 1, Dim.C])
+        self.ground_truth_control_dist=torch.zeros([Dim.A, (10 * Dim.T) - 1, Dim.Cd**2])
 
     """Returns the track with the associated track_id."""
     def track_from_track_id(self: Self, track_id: str) -> Track:
@@ -99,7 +99,7 @@ class ScenarioTensorConverter:
 
         for track_idx in range(Dim.A):
             agent_history_at_track_idx = []
-            for timestep in range(Dim.T):
+            for timestep in range(10 * Dim.T):
                 agent_history_at_track_idx_at_time_idx = []
                 if track_idx < len(self.relevant_tracks) - 1:
                     # Nominal case of adding features.

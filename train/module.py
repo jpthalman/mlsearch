@@ -1,4 +1,5 @@
-from typing import Dict
+import math
+from typing import Dict, Tuple
 
 from typing_extensions import Self
 
@@ -6,19 +7,21 @@ import pytorch_lightning as pl
 import torch
 from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
-from data.data_module import Dim
+from data.dimensions import Dim
 from model.control_predictor import ControlPredictor
 from model.scene_encoder import SceneEncoder
+from model.transformer_block import TransformerConfig
 from model.world_model import WorldModel
 
 
 class MLSearchModule(pl.LightningModule):
     # Model params
     NUM_ENCODER_LAYERS = 4
+    NUM_WORLD_MODEL_LAYERS = 2
     EMBEDDING_DIM = 128
-    HIDDEN_MULTIPLIER = 2
+    HIDDEN_MULTIPLIER = 2**0.5
     LQ_RATIO = 0.25
-    NUM_HEADS = 8
+    NUM_HEADS = 4
     DROPOUT = 0.1
 
     # Optimizer params
@@ -27,24 +30,59 @@ class MLSearchModule(pl.LightningModule):
 
     def __init__(self: Self) -> None:
         super().__init__()
+        config = TransformerConfig(
+            embed_dim=self.EMBEDDING_DIM,
+            hidden_dim=math.ceil(self.EMBEDDING_DIM * self.HIDDEN_MULTIPLIER),
+            num_heads=self.NUM_HEADS,
+            dropout=self.DROPOUT,
+        )
+
         self.scene_encoder = SceneEncoder(
             num_layers=self.NUM_ENCODER_LAYERS,
-            embed_dim=self.EMBEDDING_DIM,
-            hidden_mult=self.HIDDEN_MULTIPLIER,
             latent_query_ratio=self.LQ_RATIO,
-            num_heads=self.NUM_HEADS,
-            dropout=self.DROPOUT,
+            config=config,
         )
-        self.control_predictor = ControlPredictor(
-            embed_dim=self.EMBEDDING_DIM,
-            hidden_mult=self.HIDDEN_MULTIPLIER,
-            num_heads=self.NUM_HEADS,
-            dropout=self.DROPOUT,
+        self.control_predictor = ControlPredictor(config=config)
+        self.world_model = WorldModel(
+            num_layers=self.NUM_WORLD_MODEL_LAYERS,
+            config=config,
         )
-        self.world_model = WorldModel(self.EMBEDDING_DIM)
 
         self.embedding_loss = torch.nn.CosineEmbeddingLoss()
         self.control_loss = torch.nn.CrossEntropyLoss()
+
+        self.example_input_array = dict(
+            agent_history=torch.zeros([1, Dim.A, Dim.T, 1, Dim.S]),
+            agent_interactions=torch.zeros([1, Dim.A, Dim.T, Dim.Ai, Dim.S]),
+            agent_mask=torch.zeros([1, Dim.A, Dim.T]),
+            roadgraph=torch.zeros([1, Dim.A, 1, Dim.R, Dim.Rd]),
+            controls=torch.zeros([1, Dim.T - 1, Dim.C]),
+        )
+
+    def forward(
+        self: Self,
+        agent_history: torch.Tensor,
+        agent_interactions: torch.Tensor,
+        agent_mask: torch.Tensor,
+        roadgraph: torch.Tensor,
+        controls: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        scene_embedding = self.scene_encoder(
+            agent_history=agent_history,
+            agent_interactions=agent_interactions,
+            agent_mask=agent_mask,
+            roadgraph=roadgraph,
+        )
+        next_embedding = self.world_model(
+            scene_embedding=scene_embedding,
+            controls=controls,
+        )
+        pred_control_dist = self.control_predictor(scene_embedding)
+        return dict(
+            scene_embedding=scene_embedding,
+            next_embedding=next_embedding,
+            pred_control_dist=pred_control_dist,
+        )
 
     def _step(
         self: Self,
@@ -55,35 +93,28 @@ class MLSearchModule(pl.LightningModule):
         B = batch["ground_truth_control"].shape[0]
         D = B * Dim.A * (Dim.T - 1)
 
-        scene_embedding = self.scene_encoder(
+        out = self.forward(
             agent_history=batch["agent_history"],
             agent_interactions=batch["agent_interactions"],
             agent_mask=batch["agent_mask"],
             roadgraph=batch["roadgraph"],
-        )
-        next_embedding = self.world_model(
-            scene_embedding=scene_embedding,
             controls=batch["ground_truth_control"],
         )
 
-        E = scene_embedding.shape[-1]
         embedding_loss = self.embedding_loss(
-            scene_embedding[:, :, 1:, :].reshape(D, E),
-            next_embedding[:, :, :-1, :].reshape(D, E),
-            target=torch.ones(D).to(scene_embedding.device),
+            out["scene_embedding"][:, :, 1:, :].reshape(D, self.EMBEDDING_DIM),
+            out["next_embedding"][:, :, :-1, :].reshape(D, self.EMBEDDING_DIM),
+            target=torch.ones(D).to(self.device),
         )
-
-        # TODO
-        pred_control_dist = self.control_predictor(scene_embedding)
         control_loss = self.control_loss(
-            pred_control_dist[:, :-1, :],
+            out["pred_control_dist"][:, :-1, :],
             batch["ground_truth_control_dist"],
         )
 
-        scene_embedding = scene_embedding.mean()
+        embedding_loss = embedding_loss.mean()
         self.log(
             "train/loss_embedding",
-            scene_embedding,
+            embedding_loss,
             prog_bar=True,
             batch_size=B,
         )
