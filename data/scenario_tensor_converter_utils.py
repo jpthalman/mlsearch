@@ -1,6 +1,8 @@
 import math
 from typing import List, Iterator
 
+from data.dimensions import Dim
+
 from av2.datasets.motion_forecasting.data_schema import (
     Track,
     ObjectState,
