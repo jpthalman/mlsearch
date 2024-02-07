@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from data.control_discretization import discretize_controls
 from data.dimensions import Dim
 
 
@@ -48,14 +49,15 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
         info = self._paths[idx]
         # TODO: Populate these tensors
+        controls = torch.rand([Dim.T - 1, Dim.C])
         return dict(
             scenario_name=info["scenario_name"],
             agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),
             agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_mask=torch.zeros([Dim.A, Dim.T]),
             roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd]),
-            ground_truth_control=torch.zeros([Dim.T - 1, Dim.C]),
-            ground_truth_control_dist=torch.zeros([Dim.T - 1, Dim.Cd**2]),
+            ground_truth_control=controls,
+            ground_truth_control_dist=discretize_controls(controls),
         )
 
     def __len__(self: Self) -> int:

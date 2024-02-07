@@ -107,8 +107,8 @@ class MLSearchModule(pl.LightningModule):
             target=torch.ones(D).to(self.device),
         )
         control_loss = self.control_loss(
-            out["pred_control_dist"][:, :-1, :],
-            batch["ground_truth_control_dist"],
+            out["pred_control_dist"][:, :-1, :].reshape(B*(Dim.T-1), Dim.Cd**2),
+            batch["ground_truth_control_dist"].view(B*(Dim.T-1), Dim.Cd**2),
         )
 
         embedding_loss = embedding_loss.mean()
