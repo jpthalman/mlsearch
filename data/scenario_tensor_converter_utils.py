@@ -109,7 +109,7 @@ def min_distance_between_tracks(track_1: Track, track_2: Track) -> float:
     for track_1_os, track_2_os in zip(padded_object_state_iterator(track_1), padded_object_state_iterator(track_2)):
         if track_1_os is None or track_2_os is None:
             continue
-        min_dist = min(min_dist, distance_between_object_states(track_1_os, track_os_2))
+        min_dist = min(min_dist, distance_between_object_states(track_1_os, track_2_os))
     return min_dist
 
 """
