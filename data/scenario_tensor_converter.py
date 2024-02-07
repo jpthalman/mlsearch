@@ -1,4 +1,5 @@
 import heapq
+import random
 import torch
 from pathlib import Path
 from typing import List
@@ -44,12 +45,12 @@ class ScenarioTensorConverter:
         # Ego has a predefined track id of "AV"
         self.ego_track = self.track_from_track_id("AV")
 
-        # The relevant tracks for the scenario are the Dim.A - 1 closest tracks
-        # to ego at the first time step. The ego track is always the first
-        # element.
-        # Note: We use the first timestep for selection of relevant tracks. This
-        # has its drawbacks but will help us get started.
-        self.relevant_tracks = self.n_closest_tracks(self.ego_track, Dim.A - 1, 0)
+        # The relevance of a track will be determined by the min distance the
+        # track gets to the ego track across all timesteps. The focal track will
+        # always be included and the tracks will be of random order with the
+        # exception of ego always coming first.
+        self.ego_track, self.relevant_tracks =
+        random.shuffle(self.relevant_tracks)
         self.relevant_tracks.insert(0, self.ego_track)
 
         # This tensor represents the trace histories of all relevant agents. If
@@ -72,6 +73,9 @@ class ScenarioTensorConverter:
         for track in self.scenario.tracks:
             if track.track_id == track_id:
                 return track
+
+    def relevant_tracks(self:Self):
+
 
     """Returns the n closest tracks to a reference track at a given timestep"""
     def n_closest_tracks(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
