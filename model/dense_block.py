@@ -18,9 +18,7 @@ class DenseBlock(nn.Module):
         self.w1 = nn.Linear(input_dim, hidden_dim)
         self.w2 = nn.Linear(hidden_dim, output_dim)
         self.dropout = nn.Dropout(dropout, inplace=True)
-        self.norm = nn.LayerNorm(input_dim)
 
     def forward(self: Self, x: torch.Tensor) -> torch.Tensor:
-        x = self.norm(x)
         x = self.w2(self.w0(x) * nn.functional.silu(self.w1(x)))
         return self.dropout(x)

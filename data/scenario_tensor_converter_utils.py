@@ -1,4 +1,3 @@
-import enum
 import math
 from typing import List
 
@@ -7,27 +6,6 @@ from av2.datasets.motion_forecasting.data_schema import (
     ObjectState,
     ObjectType,
 )
-
-"""
-Enum for configured dimensions of scenario tensors.
-"""
-class Dim(enum.IntEnum):
-    # Max agents
-    A = 128
-    # Time dimension size
-    T = 110
-    # Agent state size
-    S = 8
-    # Max agent interactions
-    Ai = 16
-    # Number of roadgraph features per agent
-    R = 32
-    # Dimension of roadgraph features
-    Rd = 32
-    # Dimension of the controls that can be applied to the vehicle
-    C = 2
-    # Discretization of each control dimension
-    Cd = 16
 
 """
 Computes the euclidean distance between two object states.

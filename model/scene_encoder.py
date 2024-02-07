@@ -4,11 +4,12 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.data_module import Dim
+from data.dimensions import Dim
 from model.transformer_block import (
-    SelfAttentionBlock,
-    LatentQueryAttentionBlock,
     DynamicLatentQueryAttentionBlock,
+    LatentQueryAttentionBlock,
+    SelfAttentionBlock,
+    TransformerConfig,
 )
 
 
@@ -17,54 +18,44 @@ class SceneEncoder(nn.Module):
         self: Self,
         *,
         num_layers: int,
-        embed_dim: int,
-        hidden_mult: int,
         latent_query_ratio: float,
-        num_heads: int,
-        dropout: float,
+        config: TransformerConfig,
     ) -> None:
         super().__init__()
 
-        assert num_layers > 1
-        assert embed_dim > 0
-        assert hidden_mult > 0
+        assert num_layers > 0
         assert 0.0 < latent_query_ratio < 1.0
 
+        self.E = config.embed_dim
+
         # TODO: Try RFF + Embedding projection
-        self.agent_history_proj = nn.Linear(Dim.S, embed_dim)
-        self.agent_interactions_proj = nn.Linear(Dim.S, embed_dim)
-        self.roadgraph_proj = nn.Linear(Dim.Rd, embed_dim)
+        self.agent_history_proj = nn.Linear(Dim.S, self.E)
+        self.agent_interactions_proj = nn.Linear(Dim.S, self.E)
+        self.roadgraph_proj = nn.Linear(Dim.Rd, self.E)
 
         layers = []
-
-        L = Dim.T * (1 + Dim.Ai + Dim.R)
-        lq_length = math.ceil(latent_query_ratio * L)
-        lq_layer = LatentQueryAttentionBlock(
-            latent_query_length=lq_length,
-            input_dim=embed_dim,
-            hidden_dim=hidden_mult * embed_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-        )
-        layers.append(lq_layer)
-
-        for _ in range(num_layers - 2):
-            layers.append(SelfAttentionBlock(
-                input_dim=embed_dim,
-                hidden_dim=hidden_mult * embed_dim,
-                num_heads=num_heads,
-                dropout=dropout,
+        if num_layers == 1:
+            layers.append(LatentQueryAttentionBlock(
+                latent_query_length=Dim.T,
+                config=config,
+            ))
+        else:
+            L = Dim.T * (1 + Dim.Ai) + Dim.R
+            lq_length = math.ceil(latent_query_ratio * L)
+            layers.append(LatentQueryAttentionBlock(
+                latent_query_length=lq_length,
+                config=config,
             ))
 
-        dlq_layer = DynamicLatentQueryAttentionBlock(
-            sequence_length=lq_length,
-            latent_query_length=Dim.T,
-            input_dim=embed_dim,
-            hidden_dim=hidden_mult * embed_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-        )
-        layers.append(dlq_layer)
+            for _ in range(num_layers - 2):
+                layers.append(SelfAttentionBlock(config=config))
+
+            layers.append(DynamicLatentQueryAttentionBlock(
+                sequence_length=lq_length,
+                latent_query_length=Dim.T,
+                config=config,
+            ))
+
         self.encoders = nn.Sequential(*layers)
 
     def forward(
@@ -81,13 +72,11 @@ class SceneEncoder(nn.Module):
         agent_mask[B, A, T]
         roadgraph[B, A, 1, R, Rd]
         """
-        # x[B, A, T, 1+Ai+R, D]
+        B = agent_history.shape[0]
+        # x[B*A, T*(1+Ai+R/10), D]
         x = self._early_fusion(agent_history, agent_interactions, roadgraph)
-        B, A, T, S, D = x.shape
-        # x[B*A, T*(1+Ai*R), D]
-        x = x.view(B*A, T*S, D)
         out = self.encoders(x)
-        return out.view(B, A, Dim.T, -1)
+        return out.view(B, Dim.A, Dim.T, self.E)
 
     def _early_fusion(
         self: Self,
@@ -100,11 +89,15 @@ class SceneEncoder(nn.Module):
         agent_interactions[B, A, T, Ai, S]
         roadgraph[B, A, 1, R, Rd]
         """
-        return torch.cat(
-            [
-                self.agent_history_proj(agent_history).relu_(),
-                self.agent_interactions_proj(agent_interactions).relu_(),
-                self.roadgraph_proj(roadgraph).relu_().repeat(1, 1, Dim.T, 1, 1),
-            ],
-            dim=-2,
-        )
+        B = agent_history.shape[0]
+
+        agent_embed = self.agent_history_proj(agent_history)
+        agent_embed = agent_embed.reshape(B * Dim.A, Dim.T * 1, self.E)
+
+        interact_embed = self.agent_interactions_proj(agent_interactions)
+        interact_embed = interact_embed.reshape(B * Dim.A, Dim.T * Dim.Ai, self.E)
+
+        roadgraph_embed = self.roadgraph_proj(roadgraph)
+        roadgraph_embed = roadgraph_embed.view(B * Dim.A, Dim.R, self.E)
+
+        return torch.cat([agent_embed, interact_embed, roadgraph_embed], dim=1)

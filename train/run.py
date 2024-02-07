@@ -6,6 +6,7 @@ import argparse
 import getpass
 from pathlib import Path
 
+import torch
 import pytorch_lightning as pl
 
 from data.data_module import AV2DataModule
@@ -60,17 +61,21 @@ def main() -> None:
     output_root = OUTPUT_ROOT / args.name
     output_root.mkdir(exist_ok=True, parents=True)
 
+    torch.set_float32_matmul_precision("medium")
+
     model = MLSearchModule()
+    print(pl.utilities.model_summary.ModelSummary(model, max_depth=-1))
     trainer = pl.Trainer(
         max_epochs=max_epochs,
         max_steps=max_steps,
         accelerator="gpu",
-        precision=32,
+        precision="16-mixed",
         logger=configure_logger(args),
         enable_checkpointing=args.for_real,
         default_root_dir=output_root,
+        enable_model_summary=False,
     )
-    trainer.fit(model, datamodule=AV2DataModule(batch_size=16))
+    trainer.fit(model, datamodule=AV2DataModule(batch_size=32))
 
 
 if __name__ == "__main__":
