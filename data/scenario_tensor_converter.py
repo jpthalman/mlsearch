@@ -1,7 +1,7 @@
-import heapq
+import random
 import torch
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 from typing_extensions import Self
 
 from av2.datasets.motion_forecasting.data_schema import (
@@ -22,6 +22,8 @@ from data.scenario_tensor_converter_utils import (
     state_feature_list,
     object_state_at_timestep,
     object_state_to_string,
+    min_distance_between_tracks,
+    padded_object_state_iterator,
 )
 
 """
@@ -41,15 +43,14 @@ class ScenarioTensorConverter:
         self.scenario = load_argoverse_scenario_parquet(Path(scenario_path))
         self.static_map = ArgoverseStaticMap.from_json(Path(map_path))
 
-        # Ego has a predefined track id of "AV"
-        self.ego_track = self.track_from_track_id("AV")
-
-        # The relevant tracks for the scenario are the Dim.A - 1 closest tracks
-        # to ego at the first time step. The ego track is always the first
-        # element.
-        # Note: We use the first timestep for selection of relevant tracks. This
-        # has its drawbacks but will help us get started.
-        self.relevant_tracks = self.n_closest_tracks(self.ego_track, Dim.A - 1, 0)
+        # The relevance of a track will be determined by the min distance the
+        # track gets to the ego track across all timesteps. The focal track will
+        # always be included and the tracks will be of random order with the
+        # exception of ego always coming first.
+        # Note: There will be Dim.A relevant tracks including the ego and focal
+        # tracks.
+        self.ego_track, self.relevant_tracks = self.ego_and_relevant_tracks()
+        random.shuffle(self.relevant_tracks)
         self.relevant_tracks.insert(0, self.ego_track)
 
         # This tensor represents the trace histories of all relevant agents. If
@@ -73,25 +74,31 @@ class ScenarioTensorConverter:
             if track.track_id == track_id:
                 return track
 
-    """Returns the n closest tracks to a reference track at a given timestep"""
-    def n_closest_tracks(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
-        closest_tracks = []
+    """Returns the ego and relevant tracks separately"""
+    def ego_and_relevant_tracks(self:Self) -> Tuple[Track, List[Track]]:
+        focal_track = None
+        ego_track = None
+        relevant_tracks = []
         for track in self.scenario.tracks:
-            if track.track_id != reference_track.track_id:
-                current_object_state = object_state_at_timestep(track, timestep)
-                if current_object_state is None:
-                    # indicates state is not present at this timestep
-                    continue
-                distance_to_reference = distance_between_object_states(current_object_state, object_state_at_timestep(reference_track, timestep))
-                heapq.heappush(closest_tracks, (distance_to_reference, track))
+            if track.track_id == self.scenario.focal_track_id:
+                focal_track = track
+                continue
+            elif track.track_id == "AV":
+                ego_track = track
+                continue
+            relevant_tracks.append(track)
 
-        if len(closest_tracks) > n:
-            closest_tracks = heapq.nsmallest(n, closest_tracks)
+        # Sort the tracks based on min distance to ego and then trim to size
+        # Dim.A - 2 as ego and focal tracks still need to be included.
+        relevant_tracks.sort(key=lambda track: min_distance_between_tracks(track, ego_track))
+        if len(relevant_tracks) > Dim.A - 2:
+            relevant_tracks = relevant_tracks[:Dim.A - 2]
 
-        """Returns the track from a (distance_to_reference, Track) tuple"""
-        def _get_track_from_tuple(tuple):
-            return tuple[1]
-        return list(map(_get_track_from_tuple, closest_tracks))
+        relevant_tracks.append(focal_track)
+        if len(relevant_tracks) < Dim.A - 1:
+            relevant_tracks.extend([None] * (Dim.A - 1 - len(relevant_tracks)))
+        assert len(relevant_tracks) == Dim.A - 1
+        return ego_track, relevant_tracks
 
     """ Returns an agent history tensor of shape: [Dim.A, Dim.T, 1, Dim.S]"""
     def construct_agent_history_tensor(self: Self):
@@ -101,9 +108,9 @@ class ScenarioTensorConverter:
             agent_history_at_track_idx = []
             for timestep in range(10 * Dim.T):
                 agent_history_at_track_idx_at_time_idx = []
-                if track_idx < len(self.relevant_tracks) - 1:
+                track = self.relevant_tracks[track_idx]
+                if track is not None:
                     # Nominal case of adding features.
-                    track = self.relevant_tracks[track_idx]
                     object_state = object_state_at_timestep(track, timestep)
                     if object_state is not None:
                         state_features = state_feature_list(object_state, track)
@@ -115,7 +122,7 @@ class ScenarioTensorConverter:
                         for idx in range(Dim.S):
                             agent_history_at_track_idx_at_time_idx.append(0)
                 else:
-                    # Case where there are fewer available tracks than Dim.A
+                    # Case where there were fewer available tracks than Dim.A
                     for idx in range(Dim.S):
                         agent_history_at_track_idx_at_time_idx.append(0)
                 agent_history_at_track_idx.append(agent_history_at_track_idx_at_time_idx)

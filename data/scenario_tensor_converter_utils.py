@@ -1,5 +1,7 @@
 import math
-from typing import List
+from typing import List, Iterator
+
+from data.dimensions import Dim
 
 from av2.datasets.motion_forecasting.data_schema import (
     Track,
@@ -42,7 +44,7 @@ def state_feature_list(object_state: ObjectState, track: Track) -> List:
     object_state_list.append(object_state.heading)
     object_state_list.append(object_state.velocity[0])
     object_state_list.append(object_state.velocity[1])
-    object_state_list.append(_get_enum_int(track.object_type))
+    object_state_list.append(_object_type_to_int(track.object_type))
     object_state_list.append(track.category.value)
     return object_state_list
 
@@ -83,12 +85,40 @@ def object_state_to_string(object_state: ObjectState) -> str:
     return object_state_str
 
 """
+An iterator that goes through the timesteps and returns an ObjectState
+if one is associated with the timestep and None otherwise.
+
+Args:
+track (Track): the track whose object states are to be iterated on
+"""
+def padded_object_state_iterator(track: Track) -> Iterator[ObjectState | None]:
+    object_state_idx = 0
+    for timestep in range(Dim.T):
+        object_state = track.object_states[object_state_idx]
+        if timestep == object_state.timestep:
+            object_state_idx += 1
+            yield object_state
+        else:
+            yield None
+
+"""
+Returns the min distance across timesteps for two tracks.
+"""
+def min_distance_between_tracks(track_1: Track, track_2: Track) -> float:
+    min_dist = float('inf')
+    for track_1_os, track_2_os in zip(padded_object_state_iterator(track_1), padded_object_state_iterator(track_2)):
+        if track_1_os is None or track_2_os is None:
+            continue
+        min_dist = min(min_dist, distance_between_object_states(track_1_os, track_2_os))
+    return min_dist
+
+"""
 Converts an ObjectType enum to an integer value.
 
 Args:
-    enum_member: Object type enum to convert
+    object_type (ObjectType): Object type enum to convert
 Returns:
     int: Integer representation of ObjectType enum.
 """
-def _get_enum_int(enum_member: ObjectType) -> int:
-    return list(ObjectType).index(enum_member) + 1
+def _object_type_to_int(object_type: ObjectType) -> int:
+    return list(ObjectType).index(object_type) + 1
