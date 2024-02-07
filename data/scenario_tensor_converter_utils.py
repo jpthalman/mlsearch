@@ -89,7 +89,7 @@ if one is associated with the timestep and None otherwise.
 Args:
 track (Track): the track whose object states are to be iterated on
 """
-def padded_object_state_iterator(Track: track) -> Iterator[ObjectState | None]:
+def padded_object_state_iterator(track: Track) -> Iterator[ObjectState | None]:
     object_state_idx = 0
     for timestep in range(Dim.T):
         object_state = track.object_states[object_state_idx]
@@ -98,6 +98,17 @@ def padded_object_state_iterator(Track: track) -> Iterator[ObjectState | None]:
             yield object_state
         else:
             yield None
+
+"""
+Returns the min distance across timesteps for two tracks.
+"""
+def min_distance_between_tracks(track_1: Track, track_2: Track) -> float:
+    min_dist = float('inf')
+    for track_1_os, track_2_os in zip(padded_object_state_iterator(track_1), padded_object_state_iterator(track_2)):
+        if track_1_os is None or track_2_os is None:
+            continue
+        min_dist = min(min_dist, distance_between_object_states(track_1_os, track_os_2))
+    return min_dist
 
 """
 Converts an ObjectType enum to an integer value.

@@ -23,6 +23,7 @@ from data.scenario_tensor_converter_utils import (
     state_feature_list,
     object_state_at_timestep,
     object_state_to_string,
+    padded_object_state_iterator,
 )
 
 """
@@ -42,14 +43,13 @@ class ScenarioTensorConverter:
         self.scenario = load_argoverse_scenario_parquet(Path(scenario_path))
         self.static_map = ArgoverseStaticMap.from_json(Path(map_path))
 
-        # Ego has a predefined track id of "AV"
-        self.ego_track = self.track_from_track_id("AV")
-
         # The relevance of a track will be determined by the min distance the
         # track gets to the ego track across all timesteps. The focal track will
         # always be included and the tracks will be of random order with the
         # exception of ego always coming first.
-        self.ego_track, self.relevant_tracks =
+        # Note: There will be Dim.A relevant tracks including the ego and focal
+        # tracks.
+        self.ego_track, self.relevant_tracks = self.ego_and_relevant_tracks()
         random.shuffle(self.relevant_tracks)
         self.relevant_tracks.insert(0, self.ego_track)
 
@@ -74,8 +74,31 @@ class ScenarioTensorConverter:
             if track.track_id == track_id:
                 return track
 
-    def relevant_tracks(self:Self):
+    """Returns the ego and relevant tracks separately"""
+    def ego_and_relevant_tracks(self:Self):
+        focal_track = None
+        ego_track = None
+        relevant_tracks = []
+        for track in self.scenario.tracks:
+            if track.track_id == self.scenario.focal_track_id:
+                focal_track = track
+                continue
+            elif track.track_id == "AV":
+                ego_track = track
+                continue
+            relevant_tracks.append(track)
 
+        # Sort the tracks based on min distance to ego and then trim to size
+        # Dim.A - 2 as ego and focal tracks still need to be included.
+        relevant_tracks.sort(key=lambda track: min_distance_between_tracks(track, ego_track))
+        if len(relevant_tracks > Dim.A - 2):
+            relevant_tracks = relevant_tracks[:Dim.A - 2]
+
+        relevant_tracks.append(focal_track)
+        if len(relevant_tracks < Dim.A - 1):
+            relevant_tracks.extend([None] * (Dim.A - 1 - len(relevant_tracks)))
+        assert len(relevant_tracks) == Dim.A - 1
+        return ego_track, relevant_tracks
 
     """Returns the n closest tracks to a reference track at a given timestep"""
     def n_closest_tracks(self: Self, reference_track: Track, n: int, timestep: int) -> List[Track]:
