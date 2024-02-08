@@ -8,7 +8,7 @@ class Dim(enum.IntEnum):
     # Max agents
     A = 128
     # Time dimension size
-    T = 12
+    T = 11
     # Agent state size
     S = 8
     # Max agent interactions

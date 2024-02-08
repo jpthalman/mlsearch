@@ -59,8 +59,12 @@ class ScenarioTensorConverter:
         # Shape: [Dim.A, Dim.T, 1, Dim.S]
         self.agent_history = self.construct_agent_history_tensor()
 
-        # TODO: Populate below tensors. Default tensors values to zero
-        self.agent_interactions=torch.zeros([Dim.A, 10 * Dim.T, Dim.Ai, Dim.S])
+        # This tensor represents the interactions between agents. If there are
+        # fewer than Dim.Ai agents, the remaining space is filled with 0's.
+        # Shape: [Dim.A, Dim.T, Dim.Ai, Dim.S]
+        self.agent_interactions = self.construct_agent_interactions_tensor()
+
+         # TODO: Populate below tensors. Default tensors values to zero
         self.agent_mask=torch.zeros([Dim.A, 10 * Dim.T])
         self.roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd])
 
@@ -75,7 +79,7 @@ class ScenarioTensorConverter:
                 return track
 
     """Returns the ego and relevant tracks separately"""
-    def ego_and_relevant_tracks(self:Self) -> Tuple[Track, List[Track]]:
+    def ego_and_relevant_tracks(self :Self) -> Tuple[Track, List[Track]]:
         focal_track = None
         ego_track = None
         relevant_tracks = []
@@ -100,8 +104,32 @@ class ScenarioTensorConverter:
         assert len(relevant_tracks) == Dim.A - 1
         return ego_track, relevant_tracks
 
+    """
+    Returns the n most relevant tracks to a reference track. Relevance of a
+    track is determined by how close it gets to the reference track at any
+    point in time. The closer it gets, the higher the priority. The tracks are
+    returned in random order.
+
+    Only tracks within the scenario's high level relevant tracks are considered.
+    """
+    def relevant_n_tracks_to_reference_track(self: Self, n: int, reference_track: Track) -> List[Track]:
+        relevant_tracks_to_reference = []
+        for track in self.relevant_tracks:
+            if track is not None and track.track_id != reference_track.track_id:
+                relevant_tracks_to_reference.append(track)
+
+        relevant_tracks_to_reference.sort(key=lambda track: min_distance_between_tracks(track, reference_track))
+        num_tracks = len(relevant_tracks_to_reference)
+        if num_tracks > n:
+            relevant_tracks_to_reference = relevant_tracks_to_reference[:n]
+        elif num_tracks < n:
+            relevant_tracks_to_reference.extend([None] * (n - num_tracks))
+        assert len(relevant_tracks_to_reference) == n
+        random.shuffle(relevant_tracks_to_reference)
+        return relevant_tracks_to_reference
+
     """ Returns an agent history tensor of shape: [Dim.A, Dim.T, 1, Dim.S]"""
-    def construct_agent_history_tensor(self: Self):
+    def construct_agent_history_tensor(self: Self) -> torch.Tensor:
         agent_history_list = []
 
         for track_idx in range(Dim.A):
@@ -131,6 +159,38 @@ class ScenarioTensorConverter:
         agent_history_tensor = torch.Tensor(agent_history_list)
         return torch.unsqueeze(agent_history_tensor, 2)
 
+    """Returns an agent interaction tensor of shape: [Dim.A, Dim.T, Dim.Ai, Dim.S]"""
+    def construct_agent_interactions_tensor(self: Self) -> torch.Tensor:
+        a_dimension = []
+        for track in self.relevant_tracks:
+            if track is not None:
+                closest_tracks = self.relevant_n_tracks_to_reference_track(Dim.Ai, track)
+                t_dimension = []
+                for timestep in range(Dim.T):
+                    ai_dimension = []
+                    for ai in closest_tracks:
+                        s_dimension = []
+                        if ai is not None:
+                            object_state = object_state_at_timestep(ai, timestep)
+                            if object_state is not None:
+                                state_features = state_feature_list(object_state, track)
+                                s_dimension.extend(state_features)
+                            else:
+                                # Case where there is no object state for this track at
+                                # this timestep.
+                                s_dimension.extend([0] * Dim.S)
+                        else:
+                            # Case where there were fewer available tracks than Dim.Ai
+                            s_dimension.extend([0] * Dim.S)
+                        ai_dimension.append(s_dimension)
+                    t_dimension.append(ai_dimension)
+                a_dimension.append(t_dimension)
+            else:
+                none_padding = [[[0 for _ in range(Dim.S)] for _ in range(Dim.Ai)] for _ in range(Dim.T)]
+                a_dimension.append(none_padding)
+        return torch.Tensor(a_dimension)
+
+
 def main():
     parquet_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/scenario_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.parquet"
     map_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/log_map_archive_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.json"
@@ -147,6 +207,8 @@ def main():
     focal_track = scenario_tensor_converter.track_from_track_id(scenario_tensor_converter.scenario.focal_track_id)
     focal_object_state = object_state_at_timestep(focal_track, 0)
     print(state_feature_list(focal_object_state, focal_track))
+
+    print("Ai shape: " + str(scenario_tensor_converter.agent_interactions.shape))
 
 
 if __name__ == "__main__":
