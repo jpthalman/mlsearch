@@ -24,6 +24,7 @@ from data.scenario_tensor_converter_utils import (
     object_state_to_string,
     min_distance_between_tracks,
     padded_object_state_iterator,
+    transform_to_reference_frame,
 )
 
 """
@@ -209,6 +210,10 @@ def main():
     print(state_feature_list(focal_object_state, focal_track))
 
     print("Ai shape: " + str(scenario_tensor_converter.agent_interactions.shape))
+    # print the agent interactions of the ego object at t=0
+    ego_interactions = scenario_tensor_converter.agent_interactions[0][2]
+    for index, interaction in enumerate(ego_interactions):
+        print(str(index) + ": " + str(interaction))
 
 
 if __name__ == "__main__":
