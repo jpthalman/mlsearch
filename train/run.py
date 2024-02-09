@@ -75,7 +75,7 @@ def main() -> None:
         default_root_dir=output_root,
         enable_model_summary=False,
     )
-    trainer.fit(model, datamodule=AV2DataModule(batch_size=32))
+    trainer.fit(model, datamodule=AV2DataModule(batch_size=27))
 
 
 if __name__ == "__main__":

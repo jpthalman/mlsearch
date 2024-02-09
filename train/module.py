@@ -17,12 +17,12 @@ from model.world_model import WorldModel
 
 class MLSearchModule(pl.LightningModule):
     # Model params
-    NUM_ENCODER_LAYERS = 4
-    NUM_WORLD_MODEL_LAYERS = 2
+    ENCODER_BLOCKS = 2
+    ENCODER_SELF_ATTN_LAYERS = 2
+    WORLD_MODEL_LAYERS = 2
     EMBEDDING_DIM = 128
     HIDDEN_MULTIPLIER = 2**0.5
-    LQ_RATIO = 0.25
-    NUM_HEADS = 4
+    NUM_HEADS = 2
     DROPOUT = 0.1
 
     # Optimizer params
@@ -42,13 +42,13 @@ class MLSearchModule(pl.LightningModule):
         )
 
         self.scene_encoder = SceneEncoder(
-            num_layers=self.NUM_ENCODER_LAYERS,
-            latent_query_ratio=self.LQ_RATIO,
+            num_blocks=self.ENCODER_BLOCKS,
+            num_self_attention_layers=self.ENCODER_SELF_ATTN_LAYERS,
             config=config,
         )
         self.control_predictor = ControlPredictor(config=config)
         self.world_model = WorldModel(
-            num_layers=self.NUM_WORLD_MODEL_LAYERS,
+            num_layers=self.WORLD_MODEL_LAYERS,
             config=config,
         )
 
@@ -59,25 +59,31 @@ class MLSearchModule(pl.LightningModule):
 
         self.example_input_array = dict(
             agent_history=torch.zeros([1, Dim.A, Dim.T, 1, Dim.S]),
+            agent_history_mask=torch.zeros([1, Dim.A, Dim.T]),
             agent_interactions=torch.zeros([1, Dim.A, Dim.T, Dim.Ai, Dim.S]),
-            agent_mask=torch.zeros([1, Dim.A, Dim.T]),
-            roadgraph=torch.zeros([1, Dim.A, 1, Dim.R, Dim.Rd]),
+            agent_interactions_mask=torch.zeros([1, Dim.A, Dim.T, Dim.Ai]),
+            roadgraph=torch.zeros([1, Dim.R, Dim.Rd]),
+            roadgraph_mask=torch.zeros([1, Dim.R]),
             controls=torch.zeros([1, Dim.T - 1, Dim.C]),
         )
 
     def forward(
         self: Self,
         agent_history: torch.Tensor,
+        agent_history_mask: torch.Tensor,
         agent_interactions: torch.Tensor,
-        agent_mask: torch.Tensor,
+        agent_interactions_mask: torch.Tensor,
         roadgraph: torch.Tensor,
+        roadgraph_mask: torch.Tensor,
         controls: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         scene_embedding = self.scene_encoder(
             agent_history=agent_history,
+            agent_history_mask=agent_history_mask,
             agent_interactions=agent_interactions,
-            agent_mask=agent_mask,
+            agent_interactions_mask=agent_interactions_mask,
             roadgraph=roadgraph,
+            roadgraph_mask=roadgraph_mask,
         )
         next_embedding = self.world_model(
             scene_embedding=scene_embedding,
@@ -101,9 +107,11 @@ class MLSearchModule(pl.LightningModule):
 
         out = self.forward(
             agent_history=batch["agent_history"],
+            agent_history_mask=batch["agent_history_mask"],
             agent_interactions=batch["agent_interactions"],
-            agent_mask=batch["agent_mask"],
+            agent_interactions_mask=batch["agent_interactions_mask"],
             roadgraph=batch["roadgraph"],
+            roadgraph_mask=batch["roadgraph_mask"],
             controls=batch["ground_truth_controls"],
         )
 

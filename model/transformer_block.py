@@ -22,6 +22,7 @@ class TransformerBlock(nn.Module):
         config: TransformerConfig,
     ) -> None:
         super().__init__()
+        self.config = config
         self.attn = nn.MultiheadAttention(
             embed_dim=config.embed_dim,
             num_heads=config.num_heads,
@@ -46,6 +47,10 @@ class TransformerBlock(nn.Module):
         x[B, N, D]
         y[B, M, D]
         """
+        if mask is not None:
+            mask = torch.repeat_interleave(mask, self.config.num_heads, dim=0)
+            mask = mask.to(x.dtype)
+            mask.masked_fill_(mask == 1.0, -(2**15))
         # z[B, N, D]
         z = self.attn(x, y, y, attn_mask=mask, need_weights=False)[0]
         z = self.attn_norm(x + z)

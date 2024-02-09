@@ -52,9 +52,11 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
         return dict(
             scenario_name=info["scenario_name"],
             agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),
+            agent_history_mask=torch.zeros([Dim.A, Dim.T]),
             agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S]),
-            agent_mask=torch.zeros([Dim.A, Dim.T]),
-            roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd]),
+            agent_interactions_mask=torch.zeros([Dim.A, Dim.T, Dim.Ai]),
+            roadgraph=torch.zeros([Dim.R, Dim.Rd]),
+            roadgraph_mask=torch.zeros([Dim.R]),
             ground_truth_controls=controls,
         )
 
