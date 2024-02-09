@@ -203,7 +203,7 @@ class ScenarioTensorConverter:
                         if ai is not None:
                             object_state = object_state_at_timestep(ai, timestep)
                             if object_state is not None:
-                                state_features = state_feature_list(object_state, track)
+                                state_features = extract_state_features(track, object_state, self.reference_point)
                                 s_dimension.extend(state_features)
                             else:
                                 # Case where there is no object state for this track at
@@ -246,9 +246,9 @@ def main():
 
     print(converter.agent_history[0, :, 0, :])
 
-    print("Ai shape: " + str(scenario_tensor_converter.agent_interactions.shape))
+    print("Ai shape: " + str(converter.agent_interactions.shape))
     # print the agent interactions of the ego object at t=0
-    ego_interactions = scenario_tensor_converter.agent_interactions[0][2]
+    ego_interactions = converter.agent_interactions[0][2]
     for index, interaction in enumerate(ego_interactions):
         print(str(index) + ": " + str(interaction))
 
