@@ -87,7 +87,7 @@ class SceneEncoder(nn.Module):
         """
         agent_history[B, A, T, 1, S]
         agent_interactions[B, A, T, Ai, S]
-        roadgraph[B, A, 1, R, Rd]
+        roadgraph[B, 1, 1, R, Rd]
         """
         B = agent_history.shape[0]
 
