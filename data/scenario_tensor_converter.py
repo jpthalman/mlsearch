@@ -17,7 +17,7 @@ from av2.datasets.motion_forecasting.scenario_serialization import (
 from av2.map.map_api import ArgoverseStaticMap
 
 from data import roadgraph
-from data.control_discretization import discretize_controls
+from data import controls
 from data.dimensions import Dim
 from data.scenario_tensor_converter_utils import (
     distance_between_object_states,
@@ -97,11 +97,7 @@ class ScenarioTensorConverter:
             map_path,
         )
 
-        # TODO: Compute this
-        self.ground_truth_control = torch.zeros([Dim.T - 1, Dim.C])
-        self.ground_truth_control_dist = discretize_controls(
-            self.ground_truth_control,
-        )
+        self.ground_truth_controls = controls.compute_from_track(self.ego_track)
 
     """Returns the track with the associated track_id."""
     def track_from_track_id(self: Self, track_id: str) -> Track:
@@ -251,6 +247,11 @@ def main():
     ego_interactions = converter.agent_interactions[0][2]
     for index, interaction in enumerate(ego_interactions):
         print(str(index) + ": " + str(interaction))
+
+    print()
+    print("--- Controls ---")
+    print(converter.ground_truth_controls)
+    print(controls.discretize(converter.ground_truth_controls))
 
 
 if __name__ == "__main__":

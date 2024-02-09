@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 import torch
 from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
+from data import controls
 from data.dimensions import Dim
 from model.control_predictor import ControlPredictor
 from model.scene_encoder import SceneEncoder
@@ -27,6 +28,9 @@ class MLSearchModule(pl.LightningModule):
     # Optimizer params
     LEARNING_RATE = 2e-4
     WEIGHT_DECAY = 0.01
+
+    # Loss params
+    LABEL_SMOOTHING = 0.0
 
     def __init__(self: Self) -> None:
         super().__init__()
@@ -49,7 +53,9 @@ class MLSearchModule(pl.LightningModule):
         )
 
         self.embedding_loss = torch.nn.CosineEmbeddingLoss()
-        self.control_loss = torch.nn.CrossEntropyLoss()
+        self.control_loss = torch.nn.CrossEntropyLoss(
+            label_smoothing=self.LABEL_SMOOTHING,
+        )
 
         self.example_input_array = dict(
             agent_history=torch.zeros([1, Dim.A, Dim.T, 1, Dim.S]),
@@ -90,7 +96,7 @@ class MLSearchModule(pl.LightningModule):
         batch: Dict[str, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
-        B = batch["ground_truth_control"].shape[0]
+        B = batch["ground_truth_controls"].shape[0]
         D = B * Dim.A * (Dim.T - 1)
 
         out = self.forward(
@@ -98,7 +104,7 @@ class MLSearchModule(pl.LightningModule):
             agent_interactions=batch["agent_interactions"],
             agent_mask=batch["agent_mask"],
             roadgraph=batch["roadgraph"],
-            controls=batch["ground_truth_control"],
+            controls=batch["ground_truth_controls"],
         )
 
         embedding_loss = self.embedding_loss(
@@ -108,7 +114,7 @@ class MLSearchModule(pl.LightningModule):
         )
         control_loss = self.control_loss(
             out["pred_control_dist"][:, :-1, :].reshape(B*(Dim.T-1), Dim.Cd**2),
-            batch["ground_truth_control_dist"].view(B*(Dim.T-1), Dim.Cd**2),
+            controls.discretize(batch["ground_truth_controls"]).view(B*(Dim.T-1)),
         )
 
         embedding_loss = embedding_loss.mean()

@@ -20,4 +20,4 @@ class Dim(enum.IntEnum):
     # Dimension of the controls that can be applied to the vehicle
     C = 2
     # Discretization of each control dimension
-    Cd = 16
+    Cd = 17
