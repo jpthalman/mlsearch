@@ -1,13 +1,15 @@
-import math
-from typing import List, Iterator
+from typing import List, Iterator, Tuple
 
-from data.dimensions import Dim
-
+import numpy as np
+import torch
 from av2.datasets.motion_forecasting.data_schema import (
     Track,
     ObjectState,
     ObjectType,
 )
+
+from data.dimensions import Dim
+
 
 """
 Computes the euclidean distance between two object states.
@@ -24,29 +26,33 @@ Euclidean distance between the two object states.
 def distance_between_object_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
     position_1 = object_state_1.position
     position_2 = object_state_2.position
-    return math.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
+    return np.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
 
 """
 Constructs a state feature list from an object state and track.
 
 Args:
-    object_state (ObjectState) : Used for inertial data.
     track (Track) : Used for object type and track category.
+    object_state (ObjectState) : Used for inertial data.
 
 Returns:
-    List: [observed, x, y, heading, vx, vy, object_type, track_category]
+    List: [x, y, cos(yaw), sin(yaw), vx, vy, object_type, track_category]
 """
-def state_feature_list(object_state: ObjectState, track: Track) -> List:
+def extract_state_features(
+    track: Track,
+    object_state: ObjectState,
+    ref_point: Tuple[float, float],
+) -> torch.Tensor:
     object_state_list = []
-    object_state_list.append(float(object_state.observed))
-    object_state_list.append(object_state.position[0])
-    object_state_list.append(object_state.position[1])
-    object_state_list.append(object_state.heading)
+    object_state_list.append(object_state.position[0] - ref_point[0])
+    object_state_list.append(object_state.position[1] - ref_point[1])
+    object_state_list.append(np.cos(object_state.heading))
+    object_state_list.append(np.sin(object_state.heading))
     object_state_list.append(object_state.velocity[0])
     object_state_list.append(object_state.velocity[1])
     object_state_list.append(_object_type_to_int(track.object_type))
     object_state_list.append(track.category.value)
-    return object_state_list
+    return torch.Tensor(object_state_list)
 
 """
 Iterates through object states of a track to find the one associated with the
@@ -93,7 +99,15 @@ track (Track): the track whose object states are to be iterated on
 """
 def padded_object_state_iterator(track: Track) -> Iterator[ObjectState | None]:
     object_state_idx = 0
-    for timestep in range(Dim.T):
+    # AV2 assumes 11sec history at 10hz
+    for timestep in range(110):
+        if track is None:
+            yield None
+            continue
+        elif object_state_idx >= len(track.object_states):
+            yield None
+            continue
+
         object_state = track.object_states[object_state_idx]
         if timestep == object_state.timestep:
             object_state_idx += 1

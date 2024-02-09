@@ -16,10 +16,12 @@ from av2.datasets.motion_forecasting.scenario_serialization import (
 )
 from av2.map.map_api import ArgoverseStaticMap
 
+from data import roadgraph
+from data.control_discretization import discretize_controls
 from data.dimensions import Dim
 from data.scenario_tensor_converter_utils import (
     distance_between_object_states,
-    state_feature_list,
+    extract_state_features,
     object_state_at_timestep,
     object_state_to_string,
     min_distance_between_tracks,
@@ -40,9 +42,9 @@ map_path : path
     The path to the map json file
 """
 class ScenarioTensorConverter:
-    def __init__(self: Self, scenario_path: str, map_path: str):
-        self.scenario = load_argoverse_scenario_parquet(Path(scenario_path))
-        self.static_map = ArgoverseStaticMap.from_json(Path(map_path))
+    def __init__(self: Self, scenario_dir: Path):
+        scenario_path = scenario_dir / f"scenario_{scenario_dir.name}.parquet"
+        self.scenario = load_argoverse_scenario_parquet(scenario_path)
 
         # The relevance of a track will be determined by the min distance the
         # track gets to the ego track across all timesteps. The focal track will
@@ -54,11 +56,25 @@ class ScenarioTensorConverter:
         random.shuffle(self.relevant_tracks)
         self.relevant_tracks.insert(0, self.ego_track)
 
-        # This tensor represents the trace histories of all relevant agents. If
-        # there are fewer than Dim.A total agents, the remaining space is filled
-        # with `0`s.
-        # Shape: [Dim.A, Dim.T, 1, Dim.S]
-        self.agent_history = self.construct_agent_history_tensor()
+        # We need to pick a single reference position for the entire scenario.
+        # Since we are trying to do a history-conditioned prediction task, we
+        # want there to be some past and some future relative to the chosen
+        # reference point. We also want to use 16-bit precision so the
+        # magnitudes should be small. Since the scene is Ego focused, we pick
+        # the time point at which the prediction task begins, 5sec, for the
+        # central agent in the scene, Ego.
+        REF_TIME = 5
+        central_state = self.ego_track.object_states[50]
+        assert central_state.timestep == 50
+        self.reference_point = central_state.position
+
+        # agent_history tensor represents the trace histories of all relevant
+        # agents. If there are fewer than Dim.A total agents, the remaining
+        # space is filled with `0`s and the agent_mask tensor will be populated
+        # with True in that index.
+        # - agent_history[Dim.A, Dim.T, 1, Dim.S]
+        # - agent_mask[Dim.A, Dim.T]
+        self.agent_history, self.agent_mask = self.construct_agent_tensors()
 
         # This tensor represents the interactions between agents. If there are
         # fewer than Dim.Ai agents, the remaining space is filled with 0's.
@@ -69,9 +85,23 @@ class ScenarioTensorConverter:
         self.agent_mask=torch.zeros([Dim.A, 10 * Dim.T])
         self.roadgraph=torch.zeros([Dim.A, 1, Dim.R, Dim.Rd])
 
-        # TODO: Change to only use Ego controls.
-        self.ground_truth_control=torch.zeros([Dim.A, (10 * Dim.T) - 1, Dim.C])
-        self.ground_truth_control_dist=torch.zeros([Dim.A, (10 * Dim.T) - 1, Dim.Cd**2])
+        # Populate the roadgraph features for each agent in their reference
+        # frame.
+        # - roadgraph[Dim.A, 1, Dim.R, Dim.Rd]
+        # - roadgraph_mask[Dim.A, 1, Dim.R]
+        map_path = scenario_dir / f"log_map_archive_{scenario_dir.name}.json"
+        self.roadgraph, self.roadgraph_mask = roadgraph.extract(
+            self.agent_history,
+            self.agent_mask,
+            self.reference_point,
+            map_path,
+        )
+
+        # TODO: Compute this
+        self.ground_truth_control = torch.zeros([Dim.T - 1, Dim.C])
+        self.ground_truth_control_dist = discretize_controls(
+            self.ground_truth_control,
+        )
 
     """Returns the track with the associated track_id."""
     def track_from_track_id(self: Self, track_id: str) -> Track:
@@ -129,36 +159,35 @@ class ScenarioTensorConverter:
         random.shuffle(relevant_tracks_to_reference)
         return relevant_tracks_to_reference
 
-    """ Returns an agent history tensor of shape: [Dim.A, Dim.T, 1, Dim.S]"""
-    def construct_agent_history_tensor(self: Self) -> torch.Tensor:
-        agent_history_list = []
+    """
+    Returns:
+    - agent_history[Dim.A, Dim.T, 1, Dim.S]
+    - agent_mask[Dim.A, Dim.T]
+    """
+    def construct_agent_tensors(self: Self):
+        agent_history = torch.zeros([Dim.A, Dim.T, 1, Dim.S])
+        agent_mask = torch.zeros([Dim.A, Dim.T]).bool()
+        for a, track in enumerate(self.relevant_tracks):
+            for t, state in enumerate(padded_object_state_iterator(track)):
+                # include the last state if it exists
+                if t == 109:
+                    t += 1
 
-        for track_idx in range(Dim.A):
-            agent_history_at_track_idx = []
-            for timestep in range(10 * Dim.T):
-                agent_history_at_track_idx_at_time_idx = []
-                track = self.relevant_tracks[track_idx]
-                if track is not None:
-                    # Nominal case of adding features.
-                    object_state = object_state_at_timestep(track, timestep)
-                    if object_state is not None:
-                        state_features = state_feature_list(object_state, track)
-                        for feature in state_features:
-                            agent_history_at_track_idx_at_time_idx.append(feature)
-                    else:
-                        # Case where there is no object state for this track at
-                        # this timestep.
-                        for idx in range(Dim.S):
-                            agent_history_at_track_idx_at_time_idx.append(0)
-                else:
-                    # Case where there were fewer available tracks than Dim.A
-                    for idx in range(Dim.S):
-                        agent_history_at_track_idx_at_time_idx.append(0)
-                agent_history_at_track_idx.append(agent_history_at_track_idx_at_time_idx)
-            agent_history_list.append(agent_history_at_track_idx)
+                # Downsample to 1hz
+                if t % 10 != 0:
+                    continue
+                elif state is None:
+                    agent_mask[a, t // 10] = True
+                    continue
 
-        agent_history_tensor = torch.Tensor(agent_history_list)
-        return torch.unsqueeze(agent_history_tensor, 2)
+                agent_mask[a, t // 10] = False
+                agent_history[a, t // 10, 0, :] = extract_state_features(
+                    track,
+                    state,
+                    self.reference_point,
+                )
+        return agent_history, agent_mask
+
 
     """Returns an agent interaction tensor of shape: [Dim.A, Dim.T, Dim.Ai, Dim.S]"""
     def construct_agent_interactions_tensor(self: Self) -> torch.Tensor:
@@ -193,21 +222,29 @@ class ScenarioTensorConverter:
 
 
 def main():
-    parquet_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/scenario_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.parquet"
-    map_file_path = "/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/log_map_archive_0000b0f9-99f9-4a1f-a231-5be9e4c523f7.json"
-    scenario_tensor_converter = ScenarioTensorConverter(parquet_file_path, map_file_path)
-    print(scenario_tensor_converter.agent_history.shape)
+    import time
+
+    torch.set_printoptions(precision=2, sci_mode=False)
+    scenario_dir = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7")
+
+    st = time.time()
+    converter = ScenarioTensorConverter(scenario_dir)
+    print(f"Conversion took: {time.time() - st: 0.2f} sec")
+
+    print(converter.agent_history.shape)
 
     # print out ego track using the ego track object
-    print(object_state_to_string(scenario_tensor_converter.ego_track.object_states[0]))
+    print(object_state_to_string(converter.ego_track.object_states[0]))
     # print out agent history of first row in the agent history tensor
     print("Ego Tensor Output: ")
-    print(scenario_tensor_converter.agent_history[0][0][0])
+    print(converter.agent_history[0, 0, 0, :])
 
     # print out focal track using the focal track object
-    focal_track = scenario_tensor_converter.track_from_track_id(scenario_tensor_converter.scenario.focal_track_id)
+    focal_track = converter.track_from_track_id(converter.scenario.focal_track_id)
     focal_object_state = object_state_at_timestep(focal_track, 0)
-    print(state_feature_list(focal_object_state, focal_track))
+    print(extract_state_features(focal_track, focal_object_state, converter.reference_point))
+
+    print(converter.agent_history[0, :, 0, :])
 
     print("Ai shape: " + str(scenario_tensor_converter.agent_interactions.shape))
     # print the agent interactions of the ego object at t=0
