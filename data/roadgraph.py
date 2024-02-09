@@ -23,8 +23,6 @@ LANE_MARK_ENCODING = {e: float(i) for i, e in enumerate(list(LaneMarkType))}
 
 
 def extract(
-    agent_history: torch.Tensor,
-    agent_mask: torch.Tensor,
     reference_point: Tuple[float],
     map_path: Path
 ) -> torch.Tensor:
@@ -34,54 +32,30 @@ def extract(
     """
     tree, data = _load_rtree(map_path, reference_point)
 
-    roadgraph = torch.zeros([Dim.A, 1, Dim.R, Dim.Rd])
-    roadgraph_mask = torch.zeros([Dim.A, 1, Dim.R]).bool()
-    for a in range(Dim.A):
-        t = _get_time_index(agent_mask, a)
-        if t is None:
-            roadgraph_mask[a, 0, :] = True
-            continue
+    roadgraph = torch.zeros([1, 1, Dim.R, Dim.Rd])
+    roadgraph_mask = torch.zeros([1, 1, Dim.R]).bool()
+    query = shapely.Point(reference_point[0], reference_point[1])
 
-        # Agent states are already in reference_point frame
-        query = shapely.Point(
-            agent_history[a, t, 0, 0],
-            agent_history[a, t, 0, 1],
-        )
+    idx = []
+    radius = 100.0
+    while len(idx) < min(Dim.R, len(data)):
+        idx = list(tree.query(query.buffer(radius)))
+        radius *= 2
 
-        idx = []
-        radius = 100.0
-        while len(idx) < min(Dim.R, len(data)):
-            idx = list(tree.query(query.buffer(radius)))
-            radius *= 2
-
-        points = tree.geometries.take(idx)
-        agent_data = data.take(idx, axis=0)
-        R = min(Dim.R, len(idx))
-        for r in range(R):
-            # Make roadgraph features relative to the agents position
-            roadgraph[a, 0, r, 0] = points[r].coords[0][0] - query.coords[0][0]
-            roadgraph[a, 0, r, 1] = points[r].coords[0][1] - query.coords[0][1]
-            roadgraph[a, 0, r, 2] = points[r].coords[1][0] - query.coords[0][0]
-            roadgraph[a, 0, r, 3] = points[r].coords[1][1] - query.coords[0][1]
-            roadgraph[a, 0, r, 4] = agent_data[r][0]
-            roadgraph[a, 0, r, 5] = agent_data[r][1]
-            roadgraph[a, 0, r, 6] = agent_data[r][2]
-        roadgraph_mask[a, 0, :R] = False
-        roadgraph_mask[a, 0, R:] = True
+    points = tree.geometries.take(idx)
+    points_data = data.take(idx, axis=0)
+    R = min(Dim.R, len(idx))
+    for r in range(R):
+        roadgraph[0, 0, r, 0] = points[r].coords[0][0]
+        roadgraph[0, 0, r, 1] = points[r].coords[0][1]
+        roadgraph[0, 0, r, 2] = points[r].coords[1][0]
+        roadgraph[0, 0, r, 3] = points[r].coords[1][1]
+        roadgraph[0, 0, r, 4] = points_data[r][0]
+        roadgraph[0, 0, r, 5] = points_data[r][1]
+        roadgraph[0, 0, r, 6] = points_data[r][2]
+    roadgraph_mask[0, 0, :R] = False
+    roadgraph_mask[0, 0, R:] = True
     return roadgraph, roadgraph_mask
-
-
-def _get_time_index(agent_mask: torch.Tensor, agent_idx: int) -> int | None:
-    """
-    We want the closest index at or after t=5, but will go earlier if we have to.
-    """
-    for t in range(5, Dim.T):
-        if not agent_mask[agent_idx, t]:
-            return t
-    for t in reversed(range(5)):
-        if not agent_mask[agent_idx, t]:
-            return t
-    return None
 
 
 def _load_rtree(map_path: Path, reference_point: Tuple[float]):
