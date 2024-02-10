@@ -17,12 +17,13 @@ class ControlPredictor(nn.Module):
         config: TransformerConfig,
     ) -> None:
         super().__init__()
+        self.E = config.embed_dim
         self.control_to_agent_attn = DynamicLatentQueryAttentionBlock(
             sequence_length=Dim.A,
             latent_query_length=Dim.Cd**2,
             config=config,
         )
-        self.regression = nn.Linear(config.embed_dim, 1)
+        self.regression = nn.Linear(self.E, 1)
 
     def forward(self: Self, scene_embedding: torch.Tensor) -> torch.Tensor:
         """
@@ -32,8 +33,9 @@ class ControlPredictor(nn.Module):
         # x[B, T, A, E]
         x = scene_embedding.transpose(1, 2)
         # x[B*T, A, E]
-        x = x.reshape(B * Dim.T, Dim.A, -1)
+        x = x.reshape(B * Dim.T, Dim.A, self.E)
         # x[B*T, Cd^2, E]
+        # No mask needed since time is held independent in the batch dimension
         x = self.control_to_agent_attn(x)
         # x[B*T, Cd^2]
         x = self.regression(x)

@@ -24,7 +24,7 @@ class WorldModel(nn.Module):
         assert num_layers > 0
 
         self.E = config.embed_dim
-        self.encoders = nn.Sequential(*[
+        self.encoders = nn.ModuleList([
             SelfAttentionBlock(config=config) for _ in range(num_layers)
         ])
         self.control_encoder = DenseBlock(
@@ -41,10 +41,12 @@ class WorldModel(nn.Module):
     ) -> torch.Tensor:
         """
         scene_embedding[B, A, T, E]
-        controls[B, T, C]
+        controls[B, T-1, C]
         """
         B = scene_embedding.shape[0]
-        # x[B,T*A+(T-1),E]
+
+        # x[B, (A+1)*T, E]
+        controls = torch.cat([controls, controls[:, -1:, :]], dim=1)
         x = torch.cat(
             [
                 scene_embedding.view(B, Dim.A * Dim.T, self.E),
@@ -52,8 +54,28 @@ class WorldModel(nn.Module):
             ],
             dim=1,
         )
-        # x[B,A*T+(T-1),E]
-        out = self.encoders(x)
-        # x[B,A*T,E]
-        out = out[:, :(Dim.T * Dim.A), :]
-        return out.view(B, Dim.A, Dim.T, self.E)
+
+        # Computes a block-causal mask with shape:
+        # [0 0 1 1 1 1]
+        # [0 0 1 1 1 1]
+        # [0 0 0 0 1 1]
+        # [0 0 0 0 1 1]
+        # [0 0 0 0 0 0]
+        # [0 0 0 0 0 0]
+        # Since we are combining the agent and temporal dimension, there are
+        # A elements per time step, so we need to expand the causal mask to
+        # match that.
+        causal_mask = torch.ones([Dim.T, Dim.T], device=controls.device).bool()
+        causal_mask = torch.tril(causal_mask).logical_not()
+        causal_mask = torch.repeat_interleave(causal_mask, Dim.A + 1, dim=0)
+        causal_mask = torch.repeat_interleave(causal_mask, Dim.A + 1, dim=1)
+        # causal_mask[B, (A+1)*T, (A+1)*T]
+        causal_mask = causal_mask.unsqueeze(0).expand(B, -1, -1)
+
+        # x[B, (A+1)*T, E]
+        for encoder in self.encoders:
+            x = encoder(x, causal_mask)
+
+        # x[B, A*T, E]
+        x = x[:, :(Dim.A * Dim.T), :]
+        return x.view(B, Dim.A, Dim.T, self.E)
