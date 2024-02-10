@@ -41,12 +41,11 @@ class WorldModel(nn.Module):
     ) -> torch.Tensor:
         """
         scene_embedding[B, A, T, E]
-        controls[B, T-1, C]
+        controls[B, T, C]
         """
         B = scene_embedding.shape[0]
 
         # x[B, (A+1)*T, E]
-        controls = torch.cat([controls, controls[:, -1:, :]], dim=1)
         x = torch.cat(
             [
                 scene_embedding.view(B, Dim.A * Dim.T, self.E),

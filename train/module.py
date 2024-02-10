@@ -64,7 +64,7 @@ class MLSearchModule(pl.LightningModule):
             agent_interactions_mask=torch.zeros([1, Dim.A, Dim.T, Dim.Ai]),
             roadgraph=torch.zeros([1, Dim.R, Dim.Rd]),
             roadgraph_mask=torch.zeros([1, Dim.R]),
-            controls=torch.zeros([1, Dim.T - 1, Dim.C]),
+            controls=torch.zeros([1, Dim.T, Dim.C]),
         )
 
     def forward(
@@ -102,6 +102,7 @@ class MLSearchModule(pl.LightningModule):
         batch: Dict[str, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
+        training = (context == "train")
         B = batch["ground_truth_controls"].shape[0]
         D = B * Dim.A * (Dim.T - 1)
 
@@ -121,33 +122,60 @@ class MLSearchModule(pl.LightningModule):
             target=torch.ones(D).to(self.device),
         )
         control_loss = self.control_loss(
-            out["pred_control_dist"][:, :-1, :].reshape(B*(Dim.T-1), Dim.Cd**2),
-            controls.discretize(batch["ground_truth_controls"]).view(B*(Dim.T-1)),
+            out["pred_control_dist"].reshape(B * Dim.T, Dim.Cd**2),
+            controls.discretize(batch["ground_truth_controls"]).view(B * Dim.T),
         )
 
         embedding_loss = embedding_loss.mean()
-        self.log(
-            "train/loss_embedding",
-            embedding_loss,
-            prog_bar=True,
-            batch_size=B,
-        )
-
         control_loss = control_loss.mean()
+        loss = embedding_loss + control_loss
+
         self.log(
-            "train/loss_control",
+            f"{context}/loss",
+            loss,
+            prog_bar=training,
+            batch_size=B,
+        )
+        self.log(
+            f"{context}/loss_embd",
+            embedding_loss,
+            prog_bar=training,
+            batch_size=B,
+        )
+        self.log(
+            f"{context}/loss_ctrl",
             control_loss,
-            prog_bar=True,
+            prog_bar=training,
             batch_size=B,
         )
 
-        loss = embedding_loss + control_loss
+        pred_control_dist = out["pred_control_dist"].softmax(dim=2)
+        best_control_idx = pred_control_dist.argmax(dim=2)
+        best_control_prob = pred_control_dist.gather(
+            dim=2,
+            index=best_control_idx.unsqueeze(-1),
+        )
+        best_control = controls.undiscretize(best_control_idx)
+        best_control_err = best_control - batch["ground_truth_controls"]
         self.log(
-            "train/loss",
-            loss,
-            prog_bar=True,
+            f"{context}/metric/confidence",
+            best_control_prob.mean(),
+            prog_bar=training,
             batch_size=B,
         )
+        self.log(
+            f"{context}/metric/accel_err",
+            best_control_err[:, :, 0].mean(),
+            prog_bar=training,
+            batch_size=B,
+        )
+        self.log(
+            f"{context}/metric/steer_err",
+            best_control_err[:, :, 1].mean(),
+            prog_bar=training,
+            batch_size=B,
+        )
+
         return loss
 
     def training_step(

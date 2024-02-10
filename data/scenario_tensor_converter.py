@@ -78,7 +78,7 @@ class ScenarioTensorConverter:
             agent_interactions_mask=torch.zeros([Dim.A, Dim.T, Dim.Ai]),
             roadgraph=torch.zeros([1, 1, Dim.R, Dim.Rd]),
             roadgraph_mask=torch.zeros([1, 1, Dim.R]),
-            ground_truth_controls=torch.zeros([Dim.T - 1, Dim.C]),
+            ground_truth_controls=torch.zeros([Dim.T, Dim.C]),
         )
 
         self._populate_agent_tensors()

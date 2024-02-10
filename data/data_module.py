@@ -48,7 +48,7 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
         info = self._paths[idx]
         # TODO: Populate these tensors
-        controls = torch.rand([Dim.T - 1, Dim.C])
+        controls = torch.rand([Dim.T, Dim.C])
         return dict(
             scenario_name=info["scenario_name"],
             agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),

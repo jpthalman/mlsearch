@@ -53,6 +53,13 @@ def compute_from_track(track: Track) -> torch.Tensor:
         norm = chunk.mean() / MAX_STEER
         norm = (norm + 1) / 2
         steer_sub.append(min(max(norm, 0.0), 1.0))
+
+    # Fudge the last control since we need to compute them from the derivatives
+    accel_sub.append(accel_sub[-1])
+    steer_sub.append(steer_sub[-1])
+
+    assert len(accel_sub) == Dim.T
+    assert len(steer_sub) == Dim.T
     return torch.Tensor(list(zip(accel_sub, steer_sub)))
 
 
