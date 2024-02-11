@@ -59,7 +59,7 @@ class MLSearchModule(pl.LightningModule):
 
         self.example_input_array = dict(
             agent_history=torch.zeros([1, Dim.A, Dim.T, 1, Dim.S]),
-            agent_history_mask=torch.zeros([1, Dim.A, Dim.T]),
+            agent_mask=torch.zeros([1, Dim.A, Dim.T]),
             agent_interactions=torch.zeros([1, Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_interactions_mask=torch.zeros([1, Dim.A, Dim.T, Dim.Ai]),
             roadgraph=torch.zeros([1, Dim.R, Dim.Rd]),
@@ -70,7 +70,7 @@ class MLSearchModule(pl.LightningModule):
     def forward(
         self: Self,
         agent_history: torch.Tensor,
-        agent_history_mask: torch.Tensor,
+        agent_mask: torch.Tensor,
         agent_interactions: torch.Tensor,
         agent_interactions_mask: torch.Tensor,
         roadgraph: torch.Tensor,
@@ -79,7 +79,7 @@ class MLSearchModule(pl.LightningModule):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         scene_embedding = self.scene_encoder(
             agent_history=agent_history,
-            agent_history_mask=agent_history_mask,
+            agent_mask=agent_mask,
             agent_interactions=agent_interactions,
             agent_interactions_mask=agent_interactions_mask,
             roadgraph=roadgraph,
@@ -108,7 +108,7 @@ class MLSearchModule(pl.LightningModule):
 
         out = self.forward(
             agent_history=batch["agent_history"],
-            agent_history_mask=batch["agent_history_mask"],
+            agent_mask=batch["agent_mask"],
             agent_interactions=batch["agent_interactions"],
             agent_interactions_mask=batch["agent_interactions_mask"],
             roadgraph=batch["roadgraph"],

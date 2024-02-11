@@ -60,7 +60,7 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     """
     def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
         info = self._paths[idx]
-        tensors_dict = torch.load(info[tensors_path])
+        tensors_dict = torch.load(info["tensors_path"])
 
         # Remove the scenario_name element as it is not in the expected model input.
         if 'scenario_name' in tensors_dict:
