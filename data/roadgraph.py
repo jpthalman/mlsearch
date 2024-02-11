@@ -32,8 +32,8 @@ def extract(
     """
     tree, data = _load_rtree(map_path, reference_point)
 
-    roadgraph = torch.zeros([1, 1, Dim.R, Dim.Rd])
-    roadgraph_mask = torch.zeros([1, 1, Dim.R]).bool()
+    roadgraph = torch.zeros([Dim.R, Dim.Rd])
+    roadgraph_mask = torch.zeros([Dim.R]).bool()
     query = shapely.Point(reference_point[0], reference_point[1])
 
     idx = []
@@ -46,15 +46,15 @@ def extract(
     points_data = data.take(idx, axis=0)
     R = min(Dim.R, len(idx))
     for r in range(R):
-        roadgraph[0, 0, r, 0] = points[r].coords[0][0]
-        roadgraph[0, 0, r, 1] = points[r].coords[0][1]
-        roadgraph[0, 0, r, 2] = points[r].coords[1][0]
-        roadgraph[0, 0, r, 3] = points[r].coords[1][1]
-        roadgraph[0, 0, r, 4] = points_data[r][0]
-        roadgraph[0, 0, r, 5] = points_data[r][1]
-        roadgraph[0, 0, r, 6] = points_data[r][2]
-    roadgraph_mask[0, 0, :R] = False
-    roadgraph_mask[0, 0, R:] = True
+        roadgraph[r, 0] = points[r].coords[0][0]
+        roadgraph[r, 1] = points[r].coords[0][1]
+        roadgraph[r, 2] = points[r].coords[1][0]
+        roadgraph[r, 3] = points[r].coords[1][1]
+        roadgraph[r, 4] = points_data[r][0]
+        roadgraph[r, 5] = points_data[r][1]
+        roadgraph[r, 6] = points_data[r][2]
+    roadgraph_mask[:R] = False
+    roadgraph_mask[R:] = True
     return roadgraph, roadgraph_mask
 
 

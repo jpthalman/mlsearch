@@ -20,6 +20,7 @@ from data import roadgraph
 from data import controls
 from data.dimensions import Dim
 from data.scenario_tensor_converter_utils import (
+    AV2_MAX_TIME,
     distance_between_object_states,
     extract_state_features,
     object_state_at_timestep,
@@ -30,6 +31,9 @@ from data.scenario_tensor_converter_utils import (
 )
 
 RANDOM = random.Random(42)
+
+POS_SCALE = 100.0
+VEL_SCALE = 25.0
 
 """
 The ScenarioTensorConverter class will populate tensors from a scenario parquet
@@ -72,12 +76,13 @@ class ScenarioTensorConverter:
         self.reference_point = central_state.position
 
         self.tensors = dict(
+            scenario_name=scenario_dir.name,
             agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),
             agent_mask=torch.zeros([Dim.A, Dim.T]).bool(),
             agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_interactions_mask=torch.zeros([Dim.A, Dim.T, Dim.Ai]),
-            roadgraph=torch.zeros([1, 1, Dim.R, Dim.Rd]),
-            roadgraph_mask=torch.zeros([1, 1, Dim.R]),
+            roadgraph=torch.zeros([Dim.R, Dim.Rd]),
+            roadgraph_mask=torch.zeros([Dim.R]),
             ground_truth_controls=torch.zeros([Dim.T, Dim.C]),
         )
 
@@ -85,6 +90,7 @@ class ScenarioTensorConverter:
         self._populate_agent_interaction_tensors()
         self._populate_roadgraph_tensors(map_path)
         self._populate_controls()
+        self._normalize_tensors()
 
     """Returns the ego and relevant tracks separately"""
     def _ego_and_relevant_tracks(self:Self) -> Tuple[Track, List[Track]]:
@@ -118,7 +124,7 @@ class ScenarioTensorConverter:
         for a, track in enumerate(self.relevant_tracks):
             for t, state in enumerate(padded_object_state_iterator(track)):
                 # include the last state if it exists
-                if t == 109:
+                if t == AV2_MAX_TIME - 1:
                     t += 1
 
                 # Downsample to 1hz
@@ -181,6 +187,16 @@ class ScenarioTensorConverter:
         self.tensors["ground_truth_controls"] = controls.compute_from_track(
             self.ego_track,
         )
+
+    def _normalize_tensors(self: Self) -> None:
+        # Scale positions such that 1.0 == 100m away
+        self.tensors["agent_history"][:, :, :, (0,1)] /= POS_SCALE
+        self.tensors["agent_interactions"][:, :, :, (0,1)] /= POS_SCALE
+        self.tensors["roadgraph"][:, (0,1,2,3)] /= POS_SCALE
+
+        # Scale velocities such that 1.0 == 25m/s
+        self.tensors["agent_history"][:, :, :, (4,5)] /= VEL_SCALE
+        self.tensors["agent_interactions"][:, :, :, (4,5)] /= VEL_SCALE
 
 
 def main():

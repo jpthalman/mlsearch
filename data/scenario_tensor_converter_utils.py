@@ -10,6 +10,9 @@ from av2.datasets.motion_forecasting.data_schema import (
 
 from data.dimensions import Dim
 
+# AV2 assumes 11sec history at 10hz
+AV2_MAX_TIME = 110
+
 
 """
 Computes the euclidean distance between two object states.
@@ -107,8 +110,7 @@ track (Track): the track whose object states are to be iterated on
 """
 def padded_object_state_iterator(track: Track) -> Iterator[ObjectState | None]:
     object_state_idx = 0
-    # AV2 assumes 11sec history at 10hz
-    for timestep in range(110):
+    for timestep in range(AV2_MAX_TIME):
         if track is None:
             yield None
             continue

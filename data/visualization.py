@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 from data.dimensions import Dim
-from data.scenario_tensor_converter import ScenarioTensorConverter
+from data.scenario_tensor_converter import (
+    ScenarioTensorConverter,
+    POS_SCALE,
+)
 
 
 COLORS = {
@@ -38,9 +41,9 @@ def plot_agent(converter: ScenarioTensorConverter, a: int):
         roadgraph = converter.tensors["roadgraph"]
         roadgraph_mask = converter.tensors["roadgraph_mask"]
         for r in range(Dim.R):
-            if roadgraph_mask[0, 0, r]:
+            if roadgraph_mask[r]:
                 continue
-            segment = roadgraph[0, 0, r, :]
+            segment = roadgraph[r, :]
             ax.plot([segment[0], segment[2]], [segment[1], segment[3]], "k", linewidth=0.1)
 
         def plot_bbox(state: torch.Tensor):
@@ -56,6 +59,9 @@ def plot_agent(converter: ScenarioTensorConverter, a: int):
                 L, W = 7, 2.5
             else:
                 L, W = 2, 2
+
+            L /= POS_SCALE
+            W /= POS_SCALE
 
             fl = [
                 x + c * L/2 - s * W/2,
