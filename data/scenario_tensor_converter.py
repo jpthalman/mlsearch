@@ -215,20 +215,10 @@ def main():
     converter = ScenarioTensorConverter(scenario_dir)
     print(f"Conversion took: {time.time() - st: 0.2f} sec")
 
-    for k, v in converter.tensors.items():
-        print(k, v.shape)
-
-    # print out ego track using the ego track object
-    print(object_state_to_string(converter.ego_track.object_states[0]))
-    # print out agent history of first row in the agent history tensor
-    print("Ego Tensor Output: ")
-    print(converter.tensors["agent_history"][0, 0, 0, :])
-
-    print("Ai shape: " + str(converter.agent_interactions.shape))
-    # print the agent interactions of the ego object at t=0
-    ego_interactions = converter.agent_interactions[0][2]
-    for index, interaction in enumerate(ego_interactions):
-        print(str(index) + ": " + str(interaction))
+    for idx, item in enumerate(converter.tensors.items()):
+        if idx == 0:
+            continue
+        print(item[0], item[1].shape)
 
     print()
     print("--- Controls ---")
