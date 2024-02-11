@@ -4,7 +4,7 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.dimensions import Dim
+from data.config import Dim
 from model.transformer_block import (
     DynamicLatentQueryAttentionBlock,
     LatentQueryAttentionBlock,

@@ -8,7 +8,7 @@ import torch
 from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
 from data import controls
-from data.dimensions import Dim
+from data.config import Dim
 from model.control_predictor import ControlPredictor
 from model.scene_encoder import SceneEncoder
 from model.transformer_block import TransformerConfig
