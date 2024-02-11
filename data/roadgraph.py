@@ -17,19 +17,28 @@ import torch
 
 from data.dimensions import Dim
 
-
+# Simple encoding for lane marks and lane types.
 LANE_TYPE_ENCODING = {e: float(i) for i, e in enumerate(list(LaneType) + ["PED"])}
 LANE_MARK_ENCODING = {e: float(i) for i, e in enumerate(list(LaneMarkType))}
 
+"""
+Extracts the road features from a map in the reference frame of the provided
+reference point.
 
+Args:
+    reference_point (Tuple[float]): x, y point in map frame to use as origin
+    map_path (Path): Path to load the ArgoverseStaticMap from
+
+Returns:
+    Roadgraph tensor: [Dim.R, Dim.Rd]
+    Roadgraph mask tensor: [Dim.R]
+"""
 def extract(
     reference_point: Tuple[float],
     map_path: Path
-) -> torch.Tensor:
-    """
-    agent_history[A, T, 1, S]
-    agent_mask[A, T]
-    """
+) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    # Loads an RTree for distance calculations.
     tree, data = _load_rtree(map_path, reference_point)
 
     roadgraph = torch.zeros([Dim.R, Dim.Rd])
@@ -57,7 +66,16 @@ def extract(
     roadgraph_mask[R:] = True
     return roadgraph, roadgraph_mask
 
+"""
+Constructs and returns an STRtree representing the map. The elements of the STRtree
+will all be line segments from the lane segments and pedestrian crossings. Metadata
+on the semantics of the line segments will be stored separately and returned as a
+numpy array.
 
+Args:
+    map_path (Path): path to the map for loading the ArgoverseStaticMap
+    reference_point (Tuple[float]): point used for the origin
+"""
 def _load_rtree(map_path: Path, reference_point: Tuple[float]):
     roadgraph = ArgoverseStaticMap.from_json(map_path)
 
@@ -74,7 +92,19 @@ def _load_rtree(map_path: Path, reference_point: Tuple[float]):
 
     return shapely.STRtree(geometries), np.array(data)
 
+"""
+Extracts the relevant information for a LaneSegment.
 
+Args:
+    segment (LaneSegment): lane segment to extract from
+    reference_point (Tuple[float]): reference_frame_origin
+
+Returns:
+    geometries of the road features: List[shapely.LineString]
+    metadata for road features: List[List[is_intersection, lane_type, lane_mark_type]]
+
+    Note: The two lists will have the same length
+"""
 def _extract_lane_segment(
     segment: LaneSegment,
     reference_point: Tuple[float],
@@ -95,7 +125,14 @@ def _extract_lane_segment(
             data.append(segment_data)
     return geometries, data
 
+"""
+Extract relevant information from a PedestrianCrossing using the reference_point
+as the origin.
 
+Args:
+    crossing (PedestrianCrossing)
+    reference_point (Tuple[float]): Reference point to use as the origin.
+"""
 def _extract_pedestrian_crossing(
     crossing: PedestrianCrossing,
     reference_point: Tuple[float],
@@ -115,7 +152,18 @@ def _extract_pedestrian_crossing(
         data.append(segment_data)
     return geometries, data
 
+"""
+An iterator that yields the LineString representations of a PolyLine's
+waypoints in the reference frame of the given reference point.
 
+Args:
+    polyline (Polyline)
+    reference_point (Tuple[float]): Reference frame origin
+
+Returns:
+    Iterator that yields the LineString representations of a PolyLine's
+waypoints in the reference frame of the given reference point
+"""
 def _polyline_to_shapely(
     polyline: Polyline,
     reference_point: Tuple[float],
