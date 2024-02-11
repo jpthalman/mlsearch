@@ -45,15 +45,17 @@ def extract(
     roadgraph_mask = torch.zeros([Dim.R]).bool()
     query = shapely.Point(reference_point[0], reference_point[1])
 
-    idx = []
+    relevant_tree_indices = []
     radius = 100.0
-    while len(idx) < min(Dim.R, len(data)):
-        idx = list(tree.query(query.buffer(radius)))
+
+    # Double the search radius until the relevant_tree_indices is filled from the tree query
+    while len(relevant_tree_indices) < min(Dim.R, len(data)):
+        relevant_tree_indices = list(tree.query(query.buffer(radius)))
         radius *= 2
 
-    points = tree.geometries.take(idx)
-    points_data = data.take(idx, axis=0)
-    R = min(Dim.R, len(idx))
+    points = tree.geometries.take(relevant_tree_indices)
+    points_data = data.take(relevant_tree_indices, axis=0)
+    R = min(Dim.R, len(relevant_tree_indices))
     for r in range(R):
         roadgraph[r, 0] = points[r].coords[0][0]
         roadgraph[r, 1] = points[r].coords[0][1]
