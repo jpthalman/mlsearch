@@ -15,7 +15,8 @@ import numpy as np
 import shapely
 import torch
 
-from data.dimensions import Dim
+from data.config import Dim
+from data import config
 
 # Simple encoding for lane marks and lane types.
 LANE_TYPE_ENCODING = {e: float(i) for i, e in enumerate(list(LaneType) + ["PED"])}
@@ -46,7 +47,7 @@ def extract(
     query = shapely.Point(reference_point[0], reference_point[1])
 
     relevant_tree_indices = []
-    radius = 100.0
+    radius = config.ROADGRAPH_SEARCH_RADIUS
 
     # Double the search radius until the relevant_tree_indices is filled from the tree query
     while len(relevant_tree_indices) < min(Dim.R, len(data)):

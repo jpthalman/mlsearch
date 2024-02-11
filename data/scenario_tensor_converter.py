@@ -18,9 +18,8 @@ from av2.map.map_api import ArgoverseStaticMap
 
 from data import roadgraph
 from data import controls
-from data.dimensions import Dim
+from data import config
 from data.scenario_tensor_converter_utils import (
-    AV2_MAX_TIME,
     distance_between_object_states,
     extract_state_features,
     object_state_at_timestep,
@@ -29,12 +28,10 @@ from data.scenario_tensor_converter_utils import (
     padded_object_state_iterator,
 )
 
-RANDOM = random.Random(42)
+from data import config
+from data.config import Dim
 
-# Constant scaling factors to limit the magnitude of position and velocity values
-# so that using fp16 is feasible.
-POS_SCALE = 100.0
-VEL_SCALE = 25.0
+RANDOM = random.Random(42)
 
 """
 The ScenarioTensorConverter class will populate tensors from a scenario parquet
@@ -125,7 +122,7 @@ class ScenarioTensorConverter:
         for a, track in enumerate(self.relevant_tracks):
             for t, state in enumerate(padded_object_state_iterator(track)):
                 # include the last state if it exists
-                if t == AV2_MAX_TIME - 1:
+                if t == config.AV2_MAX_TIME - 1:
                     t += 1
 
                 # Downsample to 1hz
@@ -196,13 +193,13 @@ class ScenarioTensorConverter:
 
     def _normalize_tensors(self: Self) -> None:
         # Scale positions such that 1.0 == 100m away
-        self.tensors["agent_history"][:, :, :, (0,1)] /= POS_SCALE # Scale (x, y)
-        self.tensors["agent_interactions"][:, :, :, (0,1)] /= POS_SCALE # Scale (x, y)
-        self.tensors["roadgraph"][:, (0,1,2,3)] /= POS_SCALE # Scale (x1, y1, x2, y2) for each line segment
+        self.tensors["agent_history"][:, :, :, (0,1)] /= config.POS_SCALE # Scale (x, y)
+        self.tensors["agent_interactions"][:, :, :, (0,1)] /= config.POS_SCALE # Scale (x, y)
+        self.tensors["roadgraph"][:, (0,1,2,3)] /= config.POS_SCALE # Scale (x1, y1, x2, y2) for each line segment
 
         # Scale velocities such that 1.0 == 25m/s
-        self.tensors["agent_history"][:, :, :, (4,5)] /= VEL_SCALE # Scale (vx, vy)
-        self.tensors["agent_interactions"][:, :, :, (4,5)] /= VEL_SCALE # Scale (vx, vy)
+        self.tensors["agent_history"][:, :, :, (4,5)] /= config.VEL_SCALE # Scale (vx, vy)
+        self.tensors["agent_interactions"][:, :, :, (4,5)] /= config.VEL_SCALE # Scale (vx, vy)
 
 
 def main():

@@ -5,10 +5,10 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from data.dimensions import Dim
+from data.config import Dim
+from data import config
 from data.scenario_tensor_converter import (
     ScenarioTensorConverter,
-    POS_SCALE,
 )
 
 
@@ -60,8 +60,8 @@ def plot_agent(converter: ScenarioTensorConverter, a: int):
             else:
                 L, W = 2, 2
 
-            L /= POS_SCALE
-            W /= POS_SCALE
+            L /= config.POS_SCALE
+            W /= config.POS_SCALE
 
             fl = [
                 x + c * L/2 - s * W/2,

@@ -3,7 +3,8 @@ import torch
 
 from av2.datasets.motion_forecasting.data_schema import Track
 
-from data.dimensions import Dim
+from data.config import Dim
+from data import config
 
 
 # AV2 dataset was collected with a 2019 Ford Fusion, which has a wheel base of

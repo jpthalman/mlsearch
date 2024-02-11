@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data.dimensions import Dim
+from data.config import Dim
 
 
 class AV2DataModule(pl.LightningDataModule):
