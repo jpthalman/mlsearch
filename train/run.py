@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
 def configure_logger(args: argparse.Namespace) -> pl.loggers.CometLogger | None:
     API_KEYS = dict(
         jthalman="QpbkK2X7dvOnkqJHqvuRwBLKL",
+        sqian="8Qd7fTGpsowvw3Cpv96EXq69b",
     )
     key = API_KEYS.get(getpass.getuser(), None)
     if key is None:
