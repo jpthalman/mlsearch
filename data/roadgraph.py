@@ -38,7 +38,7 @@ def extract(
     map_path: Path
 ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-    # Loads an RTree for distance calculations.
+    # Loads an SRTree for distance calculations.
     tree, data = _load_rtree(map_path, reference_point)
 
     roadgraph = torch.zeros([Dim.R, Dim.Rd])

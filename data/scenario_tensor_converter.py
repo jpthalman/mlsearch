@@ -27,11 +27,12 @@ from data.scenario_tensor_converter_utils import (
     object_state_to_string,
     min_distance_between_tracks,
     padded_object_state_iterator,
-    transform_to_reference_frame,
 )
 
 RANDOM = random.Random(42)
 
+# Constant scaling factors to limit the magnitude of position and velocity values
+# so that using fp16 is feasible.
 POS_SCALE = 100.0
 VEL_SCALE = 25.0
 
@@ -162,14 +163,19 @@ class ScenarioTensorConverter:
                     agent_interactions_mask[a, t, :] = True
                     continue
                 state = agent_history[a, t, 0, :]
+
+                # Sort the agents by distance to current agent.
                 agents.sort(key=lambda e: torch.norm(state[:2] - e["pos"]))
                 for ai in range(Dim.Ai):
+                    # The case that there are fewer available agents than the configured number
+                    # of relevant agents for each agent.
                     if ai + 1 >= len(agents):
                         agent_interactions_mask[a, t, ai] = True
                         continue
 
                     idx = agents[ai + 1]["idx"]
                     agent_interactions[a, t, ai, :] = agent_history[idx, t, 0, :]
+
                     # Shift reference frame to be relative to this agent
                     xr, yr = state[:2]
                     agent_interactions[a, t, ai, 0] -= xr
@@ -190,13 +196,13 @@ class ScenarioTensorConverter:
 
     def _normalize_tensors(self: Self) -> None:
         # Scale positions such that 1.0 == 100m away
-        self.tensors["agent_history"][:, :, :, (0,1)] /= POS_SCALE
-        self.tensors["agent_interactions"][:, :, :, (0,1)] /= POS_SCALE
-        self.tensors["roadgraph"][:, (0,1,2,3)] /= POS_SCALE
+        self.tensors["agent_history"][:, :, :, (0,1)] /= POS_SCALE # Scale (x, y)
+        self.tensors["agent_interactions"][:, :, :, (0,1)] /= POS_SCALE # Scale (x, y)
+        self.tensors["roadgraph"][:, (0,1,2,3)] /= POS_SCALE # Scale (x1, y1, x2, y2) for each line segment
 
         # Scale velocities such that 1.0 == 25m/s
-        self.tensors["agent_history"][:, :, :, (4,5)] /= VEL_SCALE
-        self.tensors["agent_interactions"][:, :, :, (4,5)] /= VEL_SCALE
+        self.tensors["agent_history"][:, :, :, (4,5)] /= VEL_SCALE # Scale (vx, vy)
+        self.tensors["agent_interactions"][:, :, :, (4,5)] /= VEL_SCALE # Scale (vx, vy)
 
 
 def main():

@@ -17,14 +17,12 @@ AV2_MAX_TIME = 110
 """
 Computes the euclidean distance between two object states.
 
-Parameters
-----------
-object_state_1 : ObjectState
-object_state_2 : ObjectState
+Args:
+    object_state_1 (ObjectState)
+    object_state_2 (ObjectState)
 
-Returns
--------
-Euclidean distance between the two object states.
+Returns:
+    Euclidean distance between the two object states.
 """
 def distance_between_object_states(object_state_1: ObjectState, object_state_2: ObjectState) -> float:
     position_1 = object_state_1.position
@@ -40,6 +38,7 @@ Args:
 
 Returns:
     List: [x, y, cos(yaw), sin(yaw), vx, vy, object_type, track_category]
+    Note: x, y are in map frame but vx, vy are heading relative to the object
 """
 def extract_state_features(
     track: Track,
@@ -48,6 +47,7 @@ def extract_state_features(
 ) -> torch.Tensor:
     c = np.cos(object_state.heading)
     s = np.sin(object_state.heading)
+
     # Velocities are provided in map frame, rotate to be heading-relative
     gvx = object_state.velocity[0]
     gvy = object_state.velocity[1]
@@ -135,27 +135,6 @@ def min_distance_between_tracks(track_1: Track, track_2: Track) -> float:
             continue
         min_dist = min(min_dist, distance_between_object_states(track_1_os, track_2_os))
     return min_dist
-
-"""
-Translates an inertial state into the reference frame of another inertial state.
-Note: Heading will stay in the original reference frame.
-"""
-def transform_to_reference_frame(reference_object_state: ObjectState, object_state: ObjectState) -> ObjectState:
-    transformed_object_state = ObjectState()
-    transformed_object_state.observed = object_state.observed
-    transformed_object_state.timestep = object_state.timestep
-
-    transformed_x = object_state.position[0] - reference_object_state.position[0]
-    transformed_y = object_state.position[1] - reference_object_state.position[1]
-    transformed_object_state.position = (transformed_x, transformed_y)
-
-    # Heading stays in the objective reference frame
-    transformed_object_state.heading = object_state.heading
-
-    transformed_vx = object_state.velocity[0] - reference_object_state.velocity[0]
-    transformed_vy = object_state.velocity[1] - reference_object_state.velocity[1]
-    transformed_object_state.velocity = (transformed_vx, transformed_vy)
-    return transformed_object_state
 
 """
 Converts an ObjectType enum to an integer value.

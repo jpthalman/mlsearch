@@ -7,7 +7,7 @@ Enum for configured dimensions of scenario tensors.
 class Dim(enum.IntEnum):
     # Max agents
     A = 64
-    # Time dimension size
+    # Number of time steps
     T = 12
     # Agent state size
     S = 8
