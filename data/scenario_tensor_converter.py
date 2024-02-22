@@ -75,8 +75,8 @@ class ScenarioTensorConverter:
 
         self.tensors = dict(
             scenario_name=scenario_dir.name,
-            agent_history=torch.zeros([Dim.A, Dim.T, 1, Dim.S]),
-            agent_mask=torch.zeros([Dim.A, Dim.T]).bool(),
+            agent_history=torch.zeros([Dim.A, Dim.T, Dim.S]),
+            agent_history_mask=torch.zeros([Dim.A, Dim.T]).bool(),
             agent_interactions=torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_interactions_mask=torch.zeros([Dim.A, Dim.T, Dim.Ai]),
             roadgraph=torch.zeros([Dim.R, Dim.Rd]),
@@ -84,10 +84,13 @@ class ScenarioTensorConverter:
             ground_truth_controls=torch.zeros([Dim.T, Dim.C]),
         )
 
+        self.lat_error = 0.0
+        self.long_error = 0.0
+
+        self._populate_ego_tensors()
         self._populate_agent_tensors()
         self._populate_agent_interaction_tensors()
         self._populate_roadgraph_tensors(map_path)
-        self._populate_controls()
         self._normalize_tensors()
 
     """Returns the ego and relevant tracks separately"""
@@ -116,24 +119,43 @@ class ScenarioTensorConverter:
         assert len(relevant_tracks) == Dim.A - 1
         return ego_track, relevant_tracks
 
+    def _populate_ego_tensors(self: Self) -> None:
+        out = controls.compute_from_track(self.ego_track)
+        self.lat_error = out["lat_error"]
+        self.long_error = out["long_error"]
+        self.tensors["ground_truth_controls"].copy_(out["controls"])
+
+        self.tensors["agent_history_mask"][0, :] = False
+        path = out["path"]
+        history = self.tensors["agent_history"][0, :, :]
+        history[:, 0].copy_(path[:, 0] - self.reference_point[0]) # x
+        history[:, 1].copy_(path[:, 1] - self.reference_point[1]) # y
+        history[:, 2].copy_(path[:, 2]) # cos(yaw)
+        history[:, 3].copy_(path[:, 3]) # sin(yaw)
+        history[:, 4].copy_(path[:, 6]) # vx
+        history[:, 5] *= 0.0 # vy
+        history[:, 6] = 0.0 # object_type == VEHICLE
+
     def _populate_agent_tensors(self: Self) -> None:
         agent_history = self.tensors["agent_history"]
-        agent_mask = self.tensors["agent_mask"]
+        agent_history_mask = self.tensors["agent_history_mask"]
         for a, track in enumerate(self.relevant_tracks):
+            if track is not None and track.track_id == "AV":
+                continue
             for t, state in enumerate(padded_object_state_iterator(track)):
-                # include the last state if it exists
-                if t == config.AV2_MAX_TIME - 1:
-                    t += 1
-
-                # Downsample to 1hz
-                if t % 10 != 0:
+                i = t // 10 - 1
+                if t < 10 or t > 100:
+                    # Drop the first and last second of data
+                    continue
+                elif t % 10 != 0:
+                    # Downsample to 1hz
                     continue
                 elif state is None:
-                    agent_mask[a, t // 10] = True
+                    agent_history_mask[a, i] = True
                     continue
 
-                agent_mask[a, t // 10] = False
-                agent_history[a, t // 10, 0, :] = extract_state_features(
+                agent_history_mask[a, i] = False
+                agent_history[a, i, :] = extract_state_features(
                     track,
                     state,
                     self.reference_point,
@@ -141,7 +163,7 @@ class ScenarioTensorConverter:
 
     def _populate_agent_interaction_tensors(self: Self) -> None:
         agent_history = self.tensors["agent_history"]
-        agent_mask = self.tensors["agent_mask"]
+        agent_history_mask = self.tensors["agent_history_mask"]
 
         agent_interactions = self.tensors["agent_interactions"]
         agent_interactions_mask = self.tensors["agent_interactions_mask"]
@@ -149,17 +171,17 @@ class ScenarioTensorConverter:
             # Collect all valid agents at this timestep
             agents = []
             for a in range(Dim.A):
-                if agent_mask[a, t]:
+                if agent_history_mask[a, t]:
                     continue
-                state = agent_history[a, t, 0, :]
+                state = agent_history[a, t, :]
                 agents.append(dict(pos=state[:2], idx=a))
 
             # Sort by distance to each agent and populate
             for a in range(Dim.A):
-                if agent_mask[a, t]:
+                if agent_history_mask[a, t]:
                     agent_interactions_mask[a, t, :] = True
                     continue
-                state = agent_history[a, t, 0, :]
+                state = agent_history[a, t, :]
 
                 # Sort the agents by distance to current agent.
                 agents.sort(key=lambda e: torch.norm(state[:2] - e["pos"]))
@@ -171,7 +193,7 @@ class ScenarioTensorConverter:
                         continue
 
                     idx = agents[ai + 1]["idx"]
-                    agent_interactions[a, t, ai, :] = agent_history[idx, t, 0, :]
+                    agent_interactions[a, t, ai, :] = agent_history[idx, t, :]
 
                     # Shift reference frame to be relative to this agent
                     xr, yr = state[:2]
@@ -186,19 +208,14 @@ class ScenarioTensorConverter:
         self.tensors["roadgraph"].copy_(road)
         self.tensors["roadgraph_mask"].copy_(mask)
 
-    def _populate_controls(self: Self) -> None:
-        self.tensors["ground_truth_controls"] = controls.compute_from_track(
-            self.ego_track,
-        )
-
     def _normalize_tensors(self: Self) -> None:
         # Scale positions such that 1.0 == 100m away
-        self.tensors["agent_history"][:, :, :, (0,1)] /= config.POS_SCALE # Scale (x, y)
+        self.tensors["agent_history"][:, :, (0,1)] /= config.POS_SCALE # Scale (x, y)
         self.tensors["agent_interactions"][:, :, :, (0,1)] /= config.POS_SCALE # Scale (x, y)
         self.tensors["roadgraph"][:, (0,1,2,3)] /= config.POS_SCALE # Scale (x1, y1, x2, y2) for each line segment
 
         # Scale velocities such that 1.0 == 25m/s
-        self.tensors["agent_history"][:, :, :, (4,5)] /= config.VEL_SCALE # Scale (vx, vy)
+        self.tensors["agent_history"][:, :, (4,5)] /= config.VEL_SCALE # Scale (vx, vy)
         self.tensors["agent_interactions"][:, :, :, (4,5)] /= config.VEL_SCALE # Scale (vx, vy)
 
 

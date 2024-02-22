@@ -59,7 +59,6 @@ def extract_state_features(
     object_state_list.append(vx)
     object_state_list.append(vy)
     object_state_list.append(_object_type_to_int(track.object_type))
-    object_state_list.append(track.category.value)
     return torch.Tensor(object_state_list)
 
 """

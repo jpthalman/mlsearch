@@ -6,6 +6,7 @@ import argparse
 import getpass
 from pathlib import Path
 
+import comet_ml
 import torch
 import pytorch_lightning as pl
 
@@ -47,7 +48,7 @@ def configure_logger(args: argparse.Namespace) -> pl.loggers.CometLogger | None:
     if not args.for_real:
         return
     return pl.loggers.CometLogger(
-        workspace_name="jpthalman",
+        workspace="jpthalman",
         project_name="mlsearch",
         api_key=key,
         experiment_name=args.name,
@@ -58,7 +59,7 @@ def main() -> None:
     args = parse_args()
 
     max_epochs = 10 if args.for_real else 1
-    max_steps = None if args.for_real else 1000
+    max_steps = -1 if args.for_real else 1000
     output_root = OUTPUT_ROOT / args.name
     output_root.mkdir(exist_ok=True, parents=True)
 
@@ -72,9 +73,20 @@ def main() -> None:
         accelerator="gpu",
         precision="16-mixed",
         logger=configure_logger(args),
-        enable_checkpointing=args.for_real,
         default_root_dir=output_root,
         enable_model_summary=False,
+        callbacks=[
+            pl.callbacks.LearningRateMonitor(),
+            pl.callbacks.ModelCheckpoint(
+                dirpath=output_root,
+                filename="epoch_{epoch}",
+            ),
+            pl.callbacks.ModelCheckpoint(
+                dirpath=output_root,
+                monitor="val/loss",
+                filename="best_val_loss_{epoch}",
+            ),
+        ],
     )
     trainer.fit(model, datamodule=AV2DataModule(batch_size=27))
 

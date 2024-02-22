@@ -26,11 +26,8 @@ class MLSearchModule(pl.LightningModule):
     DROPOUT = 0.1
 
     # Optimizer params
-    LEARNING_RATE = 2e-4
+    LEARNING_RATE = 1e-4
     WEIGHT_DECAY = 0.01
-
-    # Loss params
-    LABEL_SMOOTHING = 0.0
 
     def __init__(self: Self) -> None:
         super().__init__()
@@ -53,9 +50,6 @@ class MLSearchModule(pl.LightningModule):
         )
 
         self.embedding_loss = torch.nn.CosineEmbeddingLoss()
-        self.control_loss = torch.nn.CrossEntropyLoss(
-            label_smoothing=self.LABEL_SMOOTHING,
-        )
 
         self.example_input_array = dict(
             agent_history=torch.zeros([1, Dim.A, Dim.T, 1, Dim.S]),
@@ -102,7 +96,6 @@ class MLSearchModule(pl.LightningModule):
         batch: Dict[str, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
-        training = (context == "train")
         B = batch["ground_truth_controls"].shape[0]
         D = B * Dim.A * (Dim.T - 1)
 
@@ -121,59 +114,46 @@ class MLSearchModule(pl.LightningModule):
             out["next_embedding"][:, :, :-1, :].reshape(D, self.EMBEDDING_DIM),
             target=torch.ones(D).to(self.device),
         )
-        control_loss = self.control_loss(
-            out["pred_control_dist"].reshape(B * Dim.T, Dim.Cd**2),
-            controls.discretize(batch["ground_truth_controls"]).view(B * Dim.T),
-        )
+
+
+        control_error = (out["pred_control_dist"] - batch["ground_truth_controls"])**2
 
         embedding_loss = embedding_loss.mean()
-        control_loss = control_loss.mean()
+        control_loss = control_error.mean()
         loss = embedding_loss + control_loss
+
+        training = (context == "train")
+        log_kwargs = dict(
+            prog_bar=training,
+            on_step=training,
+            on_epoch=not training,
+            batch_size=B,
+        )
 
         self.log(
             f"{context}/loss",
             loss,
-            prog_bar=training,
-            batch_size=B,
+            **log_kwargs,
         )
         self.log(
             f"{context}/loss_embd",
             embedding_loss,
-            prog_bar=training,
-            batch_size=B,
+            **log_kwargs,
         )
         self.log(
             f"{context}/loss_ctrl",
             control_loss,
-            prog_bar=training,
-            batch_size=B,
-        )
-
-        pred_control_dist = out["pred_control_dist"].softmax(dim=2)
-        best_control_idx = pred_control_dist.argmax(dim=2)
-        best_control_prob = pred_control_dist.gather(
-            dim=2,
-            index=best_control_idx.unsqueeze(-1),
-        )
-        best_control = controls.undiscretize(best_control_idx)
-        best_control_err = best_control - batch["ground_truth_controls"]
-        self.log(
-            f"{context}/metric/confidence",
-            best_control_prob.mean(),
-            prog_bar=training,
-            batch_size=B,
+            **log_kwargs,
         )
         self.log(
             f"{context}/metric/accel_err",
-            best_control_err[:, :, 0].mean(),
-            prog_bar=training,
-            batch_size=B,
+            control_error[:, :, 0].mean(),
+            **log_kwargs,
         )
         self.log(
             f"{context}/metric/steer_err",
-            best_control_err[:, :, 1].mean(),
-            prog_bar=training,
-            batch_size=B,
+            control_error[:, :, 1].mean(),
+            **log_kwargs,
         )
 
         return loss
