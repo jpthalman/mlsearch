@@ -33,24 +33,26 @@ class AV2DataModule(pl.LightningDataModule):
 
 class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     ROOT = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2")
+    FILTERED_SCENARIOS_PATH = Path("data/filtered_scenarios.txt")
 
     def __init__(self: Self, name: str) -> None:
+        with open(self.FILTERED_SCENARIOS_PATH, "r") as f:
+            filtered = set(f.read().split("\n"))
+
         self._paths = []
         root = self.ROOT / name
         print(f"Collecting {name} scenario info...")
         for path in root.iterdir():
-            self._paths.append(dict(
-                scenario_name=path.name,
-                scenario_path=path / f"scenario_{path.name}.parquet",
-                map_path=path / f"log_map_archive_{path.name}.json",
-                tensors_path=path / "data.pt",
-            ))
+            if path in filtered:
+                continue
+            self._paths.append(path)
+
     """
-    Returns a tensors dictionary of the following forma:
+    Returns a tensors dictionary of the following form:
     dict(
             scenario_name= str,
             agent_history= [Dim.A, Dim.T, 1, Dim.S],
-            agent_mask= [Dim.A, Dim.T],
+            agent_history_mask= [Dim.A, Dim.T],
             agent_interactions= [Dim.A, Dim.T, Dim.Ai, Dim.S],
             agent_interactions_mask= [Dim.A, Dim.T, Dim.Ai],
             roadgraph= [Dim.R, Dim.Rd],
@@ -59,16 +61,21 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
         )
     """
     def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
-        info = self._paths[idx]
-        tensors_dict = torch.load(info["tensors_path"])
-
-        # Remove the scenario_name element as it is not in the expected model input.
-        if 'scenario_name' in tensors_dict:
-            del tensors_dict['scenario_name']
-        return tensors_dict
+        path = self._paths[idx]
+        return dict(
+            scenario_name=torch.load(path / "scenario_name.pt"),
+            agent_history=torch.load(path / "agent_history.pt"),
+            agent_history_mask=torch.load(path / "agent_history_mask.pt"),
+            agent_interactions=torch.load(path / "agent_interactions.pt"),
+            agent_interactions_mask=torch.load(path / "agent_interactions_mask.pt"),
+            roadgraph=torch.load(path / "roadgraph.pt"),
+            roadgraph_mask=torch.load(path / "roadgraph_mask.pt"),
+            ground_truth_controls=torch.load(path / "ground_truth_controls.pt"),
+        )
 
     def __len__(self: Self) -> int:
         return len(self._paths)
+
 
 def main():
     test_tensors_path = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/data.pt")

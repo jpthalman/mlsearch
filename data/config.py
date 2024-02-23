@@ -18,9 +18,9 @@ class Dim(enum.IntEnum):
     # Max agents
     A = 64
     # Number of time steps
-    T = 12
+    T = 10
     # Agent state size
-    S = 8
+    S = 7
     # Max agent interactions
     Ai = 16
     # Number of roadgraph features

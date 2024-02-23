@@ -28,7 +28,7 @@ COLORS = {
 
 
 def plot_agent(converter: ScenarioTensorConverter, a: int):
-    if converter.tensors["agent_mask"][a, :].all():
+    if converter.tensors["agent_history_mask"][a, :].all():
         print(f"Agent {a} has no data")
         return
 
@@ -47,7 +47,7 @@ def plot_agent(converter: ScenarioTensorConverter, a: int):
             ax.plot([segment[0], segment[2]], [segment[1], segment[3]], "k", linewidth=0.1)
 
         def plot_bbox(state: torch.Tensor):
-            x, y, c, s, vx, vy, t, _ = state
+            x, y, c, s, vx, vy, t = state
             t = int(t)
             if t in (0, 1):
                 L, W = 4, 2
@@ -86,7 +86,7 @@ def plot_agent(converter: ScenarioTensorConverter, a: int):
             ax.plot(*get_xy(rl, fl), COLORS[t], linewidth=0.2)
 
         # Plot this agent
-        agent_state = converter.tensors["agent_history"][a, t, 0, :].clone()
+        agent_state = converter.tensors["agent_history"][a, t, :].clone()
         agent_state[6] = 0
         plot_bbox(agent_state)
 
@@ -115,7 +115,7 @@ def main():
     scenario_dir = Path(args.path)
     converter = ScenarioTensorConverter(scenario_dir)
     print("agents with data:")
-    for i, e in enumerate(converter.tensors["agent_mask"].logical_not().float().sum(dim=1).squeeze()):
+    for i, e in enumerate(converter.tensors["agent_history_mask"].logical_not().float().sum(dim=1).squeeze()):
         print(i, e.numpy())
     plot_agent(converter, args.agent)
 

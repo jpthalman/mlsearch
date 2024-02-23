@@ -20,7 +20,7 @@ class ControlPredictor(nn.Module):
         self.E = config.embed_dim
         self.control_to_agent_attn = DynamicLatentQueryAttentionBlock(
             sequence_length=Dim.A,
-            latent_query_length=Dim.Cd**2,
+            latent_query_length=Dim.C,
             config=config,
         )
         self.regression = nn.Linear(self.E, 1)
@@ -35,9 +35,9 @@ class ControlPredictor(nn.Module):
         # x[B*T, A, E]
         # TODO: Maybe adding some registers in the agent dimension would help
         x = x.reshape(B * Dim.T, Dim.A, self.E)
-        # x[B*T, Cd^2, E]
+        # x[B*T, C, E]
         # No mask needed since time is held independent in the batch dimension
         x = self.control_to_agent_attn(x)
-        # x[B*T, Cd^2]
-        x = self.regression(x)
-        return x.view(B, Dim.T, Dim.Cd**2)
+        # x[B*T, C]
+        x = self.regression(x).sigmoid()
+        return x.view(B, Dim.T, Dim.C)
