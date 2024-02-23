@@ -76,7 +76,7 @@ class SceneEncoder(nn.Module):
         self: Self,
         *,
         agent_history: torch.Tensor,
-        agent_mask: torch.Tensor,
+        agent_history_mask: torch.Tensor,
         agent_interactions: torch.Tensor,
         agent_interactions_mask: torch.Tensor,
         roadgraph: torch.Tensor,
@@ -84,7 +84,7 @@ class SceneEncoder(nn.Module):
     ) -> torch.Tensor:
         """
         agent_history[B, A, T, 1, S]
-        agent_mask[B, A, T]
+        agent_history_mask[B, A, T]
         agent_interactions[B, A, T, Ai, S]
         agent_interactions_mask[B, A, T, Ai]
         roadgraph[B, R, Rd]
@@ -97,7 +97,7 @@ class SceneEncoder(nn.Module):
         # self_attn_mask[B*A, T*(Ai+1), T*(Ai+1)]
         agent_embed, agent_mask, self_attn_mask = self._embed_agents(
             agent_history,
-            agent_mask,
+            agent_history_mask,
             agent_interactions,
             agent_interactions_mask,
         )
@@ -127,13 +127,13 @@ class SceneEncoder(nn.Module):
     def _embed_agents(
         self: Self,
         agent_history: torch.Tensor,
-        agent_mask: torch.Tensor,
+        agent_history_mask: torch.Tensor,
         agent_interactions: torch.Tensor,
         agent_interactions_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
         agent_history[B, A, T, 1, S]
-        agent_mask[B, A, T]
+        agent_history_mask[B, A, T]
         agent_interactions[B, A, T, Ai, S]
         agent_interactions_mask[B, A, T, Ai]
         """
@@ -141,7 +141,7 @@ class SceneEncoder(nn.Module):
 
         # agent_mask[B,A,T,Ai+1]
         agent_mask = torch.cat(
-            [agent_mask.unsqueeze(-1), agent_interactions_mask],
+            [agent_history_mask.unsqueeze(-1), agent_interactions_mask],
             dim=3,
         )
         # agent_mask[B*A,T*(Ai+1)]

@@ -340,7 +340,9 @@ def _downsample_path(ground_truth):
     MIN_POS_ERROR = 0.5**2
     MIN_VEL_ERROR = 0.3**2
 
-    initial_yaw = ground_truth[:10, 2].mean()
+    first_second_yaw = ground_truth[:10, 2]
+    avg_yaw = (first_second_yaw.cos() + 1j * first_second_yaw.sin()).mean()
+    initial_yaw = torch.atan2(avg_yaw.imag, avg_yaw.real)
     initial_yaw.requires_grad = True
     initial_yaw.retain_grad()
 

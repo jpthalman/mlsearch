@@ -17,7 +17,6 @@ LOG = logging.getLogger(__name__)
 
 
 def _process(scenario_dir: Path) -> Path | None:
-    print(scenario_dir)
     if not (scenario_dir.exists() and scenario_dir.is_dir()):
         LOG.error(f"Skipping: {str(scenario_dir)}")
         return scenario_dir
