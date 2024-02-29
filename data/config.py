@@ -16,9 +16,9 @@ Enum for configured dimensions of scenario tensors.
 """
 class Dim(enum.IntEnum):
     # Max agents
-    A = 64
+    A = 128
     # Number of time steps
-    T = 10
+    T = 110
     # Agent state size
     S = 7
     # Max agent interactions
@@ -26,7 +26,7 @@ class Dim(enum.IntEnum):
     # Number of roadgraph features
     R = 1024
     # Dimension of roadgraph features
-    Rd = 7
+    Rd = 8
     # Dimension of the controls that can be applied to the vehicle
     C = 2
     # Discretization of each control dimension

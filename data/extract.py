@@ -10,7 +10,7 @@ import tqdm
 from data.scenario_tensor_converter import ScenarioTensorConverter
 
 
-ROOT = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2")
+ROOT = Path("/tmp/av2")
 OVERWRITE = False
 
 LOG = logging.getLogger(__name__)
@@ -21,28 +21,14 @@ def _process(scenario_dir: Path) -> Path | None:
         LOG.error(f"Skipping: {str(scenario_dir)}")
         return scenario_dir
 
-    old = scenario_dir / "data.pt"
-    if old.exists():
-        old.unlink()
-
     try:
         converter = ScenarioTensorConverter(scenario_dir)
+        converter.write_agent_history_tensor()
+        # converter.write_agent_interaction_tensor()
+        converter.write_roadgraph_tensor()
     except Exception as err:
         LOG.error(f"Failed to extract: {str(scenario_dir)} \n {traceback.format_exc()}")
         return scenario_dir
-
-    for name, tensor in converter.tensors.items():
-        out = scenario_dir / f"{name}.pt"
-        if out.exists():
-            if not OVERWRITE:
-                continue
-            out.unlink()
-        torch.save(tensor, out)
-
-    out = scenario_dir / "errors.txt"
-    if not out.exists() or OVERWRITE:
-        with open(out, "w") as f:
-            f.write(f"{converter.lat_error},{converter.long_error}\n")
 
 
 def main():

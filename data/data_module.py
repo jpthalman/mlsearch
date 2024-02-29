@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data.config import Dim
+from data.config import Dim, POS_SCALE, VEL_SCALE
 
 
 class AV2DataModule(pl.LightningDataModule):
@@ -33,18 +33,12 @@ class AV2DataModule(pl.LightningDataModule):
 
 class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     ROOT = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2")
-    FILTERED_SCENARIOS_PATH = Path("data/filtered_scenarios.txt")
 
     def __init__(self: Self, name: str) -> None:
-        with open(self.FILTERED_SCENARIOS_PATH, "r") as f:
-            filtered = set(f.read().split("\n"))
-
         self._paths = []
         root = self.ROOT / name
         print(f"Collecting {name} scenario info...")
         for path in root.iterdir():
-            if path in filtered:
-                continue
             self._paths.append(path)
 
     """
@@ -62,15 +56,20 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     """
     def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
         path = self._paths[idx]
+
+        history = torch.load(path / "agent_history.pt")
+        history = history[:64, ::2, :]
+        history[:, :, 0] /= POS_SCALE
+        history[:, :, 1] /= POS_SCALE
+        history[:, :, 4] /= VEL_SCALE
+
+        roadgraph = torch.load(path / "roadgraph.pt")
+        roadgraph[:, :4] /= POS_SCALE
+
         return dict(
-            scenario_name=torch.load(path / "scenario_name.pt"),
-            agent_history=torch.load(path / "agent_history.pt"),
-            agent_history_mask=torch.load(path / "agent_history_mask.pt"),
-            agent_interactions=torch.load(path / "agent_interactions.pt"),
-            agent_interactions_mask=torch.load(path / "agent_interactions_mask.pt"),
-            roadgraph=torch.load(path / "roadgraph.pt"),
-            roadgraph_mask=torch.load(path / "roadgraph_mask.pt"),
-            ground_truth_controls=torch.load(path / "ground_truth_controls.pt"),
+            scenario_name=path.stem,
+            agent_history=history,
+            roadgraph=roadgraph,
         )
 
     def __len__(self: Self) -> int:

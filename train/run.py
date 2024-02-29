@@ -88,7 +88,7 @@ def main() -> None:
             ),
         ],
     )
-    trainer.fit(model, datamodule=AV2DataModule(batch_size=27))
+    trainer.fit(model, datamodule=AV2DataModule(batch_size=30))
 
 
 if __name__ == "__main__":

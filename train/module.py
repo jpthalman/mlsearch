@@ -7,12 +7,48 @@ import pytorch_lightning as pl
 import torch
 from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
-from data import controls
+from data import controls as control_utils
+from data import config
 from data.config import Dim
 from model.control_predictor import ControlPredictor
 from model.scene_encoder import SceneEncoder
 from model.transformer_block import TransformerConfig
 from model.world_model import WorldModel
+
+
+def compute_control_error(ego_history, controls):
+    """
+    ego_history[B, T, S]
+    controls[B, T, C]
+    """
+    B = ego_history.shape[0]
+    ego_history = ego_history.clone()
+    controls = controls.clone()
+
+    ego_history[:, :, (0, 1)] *= config.POS_SCALE
+    ego_history[:, :, 4] *= config.VEL_SCALE
+
+    states = ego_history[:, :-1, :].reshape(B * (Dim.T - 1), Dim.S)
+    x0 = states[:, 0]
+    y0 = states[:, 1]
+    cyaw = states[:, 2]
+    syaw = states[:, 3]
+    v0 = states[:, 4]
+
+    controls = controls[:, :-1, :].reshape(B * (Dim.T - 1), Dim.C)
+    accel = (2 * controls[:, 0] - 1) * control_utils.MAX_ACCEL
+    curv = (2 * controls[:, 1] - 1) * control_utils.MAX_CURV
+
+    v1 = v0 + accel
+    dl = 0.5 * (v0 + v1)
+    x1, y1 = control_utils._advance(x0, y0, cyaw, syaw, curv, dl)
+
+    x1_gt = ego_history[:, 1:, 0].reshape(B * (Dim.T - 1))
+    y1_gt = ego_history[:, 1:, 1].reshape(B * (Dim.T - 1))
+    dx = x1 - x1_gt
+    dy = y1 - y1_gt
+    dist_err = torch.sqrt(dx**2 + dy**2 + 1e-5)
+    return dist_err
 
 
 class MLSearchModule(pl.LightningModule):
@@ -26,7 +62,7 @@ class MLSearchModule(pl.LightningModule):
     DROPOUT = 0.1
 
     # Optimizer params
-    LEARNING_RATE = 1e-4
+    LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 0.01
 
     def __init__(self: Self) -> None:
@@ -52,7 +88,7 @@ class MLSearchModule(pl.LightningModule):
         self.embedding_loss = torch.nn.CosineEmbeddingLoss()
 
         self.example_input_array = dict(
-            agent_history=torch.zeros([1, Dim.A, Dim.T, 1, Dim.S]),
+            agent_history=torch.zeros([1, Dim.A, Dim.T, Dim.S]),
             agent_history_mask=torch.zeros([1, Dim.A, Dim.T]),
             agent_interactions=torch.zeros([1, Dim.A, Dim.T, Dim.Ai, Dim.S]),
             agent_interactions_mask=torch.zeros([1, Dim.A, Dim.T, Dim.Ai]),
@@ -115,8 +151,11 @@ class MLSearchModule(pl.LightningModule):
             target=torch.ones(D).to(self.device),
         )
 
-
-        control_error = (out["pred_control_dist"] - batch["ground_truth_controls"])**2
+        control_error = compute_control_error(
+            batch["agent_history"][:, 0, :, :],
+            out["pred_control_dist"],
+        )
+        # control_error = (out["pred_control_dist"] - batch["ground_truth_controls"])**2
 
         embedding_loss = embedding_loss.mean()
         control_loss = control_error.mean()
@@ -145,18 +184,8 @@ class MLSearchModule(pl.LightningModule):
             control_loss,
             **log_kwargs,
         )
-        self.log(
-            f"{context}/metric/accel_err",
-            control_error[:, :, 0].mean(),
-            **log_kwargs,
-        )
-        self.log(
-            f"{context}/metric/steer_err",
-            control_error[:, :, 1].mean(),
-            **log_kwargs,
-        )
 
-        return loss
+        return control_loss
 
     def training_step(
         self: Self,

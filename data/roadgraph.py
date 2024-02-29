@@ -28,22 +28,20 @@ reference point.
 
 Args:
     reference_point (Tuple[float]): x, y point in map frame to use as origin
-    map_path (Path): Path to load the ArgoverseStaticMap from
+    roadgraph (ArgoverseStaticMap): ArgoverseStaticMap instance
 
 Returns:
     Roadgraph tensor: [Dim.R, Dim.Rd]
-    Roadgraph mask tensor: [Dim.R]
 """
 def extract(
     reference_point: Tuple[float],
-    map_path: Path
+    roadgraph: ArgoverseStaticMap,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
 
     # Loads an SRTree for distance calculations.
-    tree, data = _load_rtree(map_path, reference_point)
+    tree, data = _load_rtree(roadgraph, reference_point)
 
     roadgraph = torch.zeros([Dim.R, Dim.Rd])
-    roadgraph_mask = torch.zeros([Dim.R]).bool()
     query = shapely.Point(reference_point[0], reference_point[1])
 
     relevant_tree_indices = []
@@ -65,9 +63,8 @@ def extract(
         roadgraph[r, 4] = points_data[r][0]
         roadgraph[r, 5] = points_data[r][1]
         roadgraph[r, 6] = points_data[r][2]
-    roadgraph_mask[:R] = False
-    roadgraph_mask[R:] = True
-    return roadgraph, roadgraph_mask
+        roadgraph[r, 7] = 1.0
+    return roadgraph
 
 """
 Constructs and returns an STRtree representing the map. The elements of the STRtree
@@ -76,12 +73,10 @@ on the semantics of the line segments will be stored separately and returned as 
 numpy array.
 
 Args:
-    map_path (Path): path to the map for loading the ArgoverseStaticMap
+    map_path (Path): The ArgoverseStaticMap instance
     reference_point (Tuple[float]): point used for the origin
 """
-def _load_rtree(map_path: Path, reference_point: Tuple[float]):
-    roadgraph = ArgoverseStaticMap.from_json(map_path)
-
+def _load_rtree(roadgraph: ArgoverseStaticMap, reference_point: Tuple[float]):
     geometries = []
     data = []
     for segment in roadgraph.vector_lane_segments.values():
