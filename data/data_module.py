@@ -32,7 +32,7 @@ class AV2DataModule(pl.LightningDataModule):
 
 
 class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
-    ROOT = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2")
+    ROOT = Path("/tmp/av2")
 
     def __init__(self: Self, name: str) -> None:
         self._paths = []

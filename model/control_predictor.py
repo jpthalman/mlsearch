@@ -30,14 +30,15 @@ class ControlPredictor(nn.Module):
         scene_embedding[B, A, T, E]
         """
         B = scene_embedding.shape[0]
+        T = scene_embedding.shape[2]
         # x[B, T, A, E]
         x = scene_embedding.transpose(1, 2)
         # x[B*T, A, E]
         # TODO: Maybe adding some registers in the agent dimension would help
-        x = x.reshape(B * Dim.T, Dim.A, self.E)
+        x = x.reshape(B * T, Dim.A, self.E)
         # x[B*T, C, E]
         # No mask needed since time is held independent in the batch dimension
         x = self.control_to_agent_attn(x)
         # x[B*T, C]
         x = self.regression(x).sigmoid()
-        return x.view(B, Dim.T, Dim.C)
+        return x.view(B, T, Dim.C)
