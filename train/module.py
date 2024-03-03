@@ -55,7 +55,7 @@ class MLSearchModule(pl.LightningModule):
     EMBEDDING_DIM = 128
     HIDDEN_MULTIPLIER = 2**0.5
     NUM_HEADS = 2
-    DROPOUT = 0.1
+    DROPOUT = 0.01
 
     # Optimizer params
     LEARNING_RATE = 1e-4
@@ -133,7 +133,7 @@ class MLSearchModule(pl.LightningModule):
 
         control_loss = control_error.mean()
         embedding_loss = embedding_error.mean()
-        loss = control_loss + embedding_loss
+        loss = control_loss + 0.01 * embedding_loss
 
         training = (context == "train")
         log_kwargs = dict(

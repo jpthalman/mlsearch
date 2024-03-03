@@ -26,7 +26,7 @@ from data.scenario_tensor_converter_utils import (
     min_distance_between_tracks,
     padded_object_state_iterator,
 )
-from data.config import Dim
+from data.config import Dim, AV2_MAX_TIME
 
 RANDOM = random.Random(42)
 
@@ -94,7 +94,7 @@ class ScenarioTensorConverter:
         return central_state.position
 
     def write_agent_history_tensor(self: Self) -> None:
-        agent_history = torch.zeros([Dim.A, Dim.T, Dim.S])
+        agent_history = torch.zeros([Dim.A, AV2_MAX_TIME, Dim.S])
         for a, track in enumerate(self.relevant_tracks):
             for t, state in enumerate(padded_object_state_iterator(track)):
                 if state is None:
@@ -108,43 +108,6 @@ class ScenarioTensorConverter:
                 agent_history[a, t, 5] = object_type_to_int(track.object_type)
                 agent_history[a, t, 6] = 1.0
         torch.save(agent_history, self.agent_history_path)
-
-    def write_agent_interaction_tensor(self: Self) -> None:
-        assert self.agent_history_path.exists()
-        agent_history = torch.load(self.agent_history_path)
-        agent_interactions = torch.zeros([Dim.A, Dim.T, Dim.Ai, Dim.S])
-        for t in range(Dim.T):
-            # Collect all valid agents at this timestep
-            agents = []
-            for a in range(Dim.A):
-                if not agent_history[a, t, -1]:
-                    continue
-                state = agent_history[a, t, :]
-                agents.append(dict(pos=state[:2], idx=a))
-
-            # Sort by distance to each agent and populate
-            for a in range(Dim.A):
-                if not agent_history[a, t, -1]:
-                    continue
-
-                state = agent_history[a, t, :]
-
-                # Sort the agents by distance to current agent.
-                agents.sort(key=lambda e: torch.norm(state[:2] - e["pos"]))
-                for ai in range(Dim.Ai):
-                    # The case that there are fewer available agents than the configured number
-                    # of relevant agents for each agent.
-                    if ai + 1 >= len(agents):
-                        break
-
-                    idx = agents[ai + 1]["idx"]
-                    agent_interactions[a, t, ai, :] = agent_history[idx, t, :]
-
-                    # Shift reference frame to be relative to this agent
-                    xr, yr = state[:2]
-                    agent_interactions[a, t, ai, 0] -= xr
-                    agent_interactions[a, t, ai, 1] -= yr
-        torch.save(agent_interactions, self.agent_interactions_path)
 
     def write_roadgraph_tensor(self: Self) -> None:
         road = roadgraph.extract(self.reference_point, self.roadgraph)

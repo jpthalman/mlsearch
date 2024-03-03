@@ -7,17 +7,23 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data.config import Dim, POS_SCALE, VEL_SCALE
+from data.config import Dim, POS_SCALE, VEL_SCALE, TRAIN_DATA_ROOT
 
 
 class AV2DataModule(pl.LightningDataModule):
     def __init__(self: Self, *, batch_size: int) -> None:
         super().__init__()
         self._batch_size = batch_size
+        generator = torch.Generator().manual_seed(42)
+        self._train, self._val = torch.utils.data.random_split(
+            dataset=AV2Dataset(TRAIN_DATA_ROOT),
+            lengths=[0.95, 0.05],
+            generator=generator,
+        )
 
     def train_dataloader(self: Self) -> DataLoader:
         return DataLoader(
-            AV2Dataset("train"),
+            self._train,
             batch_size=self._batch_size,
             num_workers=os.cpu_count(),
             shuffle=True,
@@ -25,19 +31,16 @@ class AV2DataModule(pl.LightningDataModule):
 
     def val_dataloader(self: Self) -> DataLoader:
         return DataLoader(
-            AV2Dataset("val"),
+            self._val,
             batch_size=self._batch_size,
             num_workers=os.cpu_count(),
         )
 
 
 class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
-    ROOT = Path("/tmp/av2")
-
-    def __init__(self: Self, name: str) -> None:
+    def __init__(self: Self, root: Path) -> None:
         self._paths = []
-        root = self.ROOT / name
-        print(f"Collecting {name} scenario info...")
+        print(f"Collecting scenario info from {str(root)}...")
         for path in root.iterdir():
             self._paths.append(path)
 

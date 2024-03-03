@@ -1,4 +1,12 @@
 import enum
+from pathlib import Path
+
+
+LOCAL_ROOT_DIR = Path("~/mlsearch").expanduser()
+EXPERIMENT_ROOT = LOCAL_ROOT_DIR / "experiments"
+DATA_ROOT = LOCAL_ROOT_DIR / "data"
+TRAIN_DATA_ROOT = DATA_ROOT / "train"
+TEST_DATA_ROOT = DATA_ROOT / "test"
 
 # AV2 assumes 11sec history at 10hz
 AV2_MAX_TIME = 110
