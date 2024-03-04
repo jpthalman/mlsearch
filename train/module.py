@@ -26,26 +26,13 @@ def compute_control_error(ego_history, controls):
     ego_history[:, :, 4] *= VEL_SCALE
 
     states = ego_history[:, :-Dim.Dt, :].reshape(B * (Dim.T - Dim.Dt), Dim.S)
-    x0 = states[:, 0]
-    y0 = states[:, 1]
-    cyaw = states[:, 2]
-    syaw = states[:, 3]
-    v0 = states[:, 4]
-
     controls = controls.reshape(B * (Dim.T - Dim.Dt), Dim.C)
-    accel = (2 * controls[:, 0] - 1) * control_utils.MAX_ACCEL
-    curv = (2 * controls[:, 1] - 1) * control_utils.MAX_CURV
+    pred_states = control_utils.integrate(states, controls)
 
-    v1 = (v0 + accel).relu()
-    dl = 0.5 * (v0 + v1)
-    x1, y1 = control_utils._advance(x0, y0, cyaw, syaw, curv, dl)
-
-    x1_gt = ego_history[:, Dim.Dt:, 0].reshape(B * (Dim.T - Dim.Dt))
-    y1_gt = ego_history[:, Dim.Dt:, 1].reshape(B * (Dim.T - Dim.Dt))
-    dx = x1 - x1_gt
-    dy = y1 - y1_gt
-    dist_err = torch.sqrt(dx**2 + dy**2 + 1e-5)
-    return dist_err
+    gt_states = ego_history[:, Dim.Dt:, :].reshape(B * (Dim.T - Dim.Dt))
+    err = pred_states[:, :2] - gt_states[:, :2]
+    err = err.square().sum(dim=1)
+    return torch.sqrt(err + 1e-5)
 
 
 class MLSearchModule(pl.LightningModule):
