@@ -79,12 +79,14 @@ def main() -> None:
             pl.callbacks.LearningRateMonitor(),
             pl.callbacks.ModelCheckpoint(
                 dirpath=output_root,
-                filename="epoch_{epoch}",
+                filename="last",
+                enable_version_counter=False,
             ),
             pl.callbacks.ModelCheckpoint(
                 dirpath=output_root,
                 monitor="val/loss",
-                filename="best_val_loss_{epoch}",
+                filename="best_val_loss",
+                enable_version_counter=False,
             ),
         ],
     )

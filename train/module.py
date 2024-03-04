@@ -8,11 +8,14 @@ import torch
 from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
 from data import controls as control_utils
-from data.config import Dim, POS_SCALE, VEL_SCALE
+from data.config import Dim
 from model.control_predictor import ControlPredictor
 from model.scene_encoder import SceneEncoder
 from model.transformer_block import TransformerConfig
 from model.world_model import WorldModel
+
+
+Dt = 5
 
 
 def compute_control_error(ego_history, controls):
@@ -22,17 +25,14 @@ def compute_control_error(ego_history, controls):
     """
     B = ego_history.shape[0]
 
-    ego_history[:, :, (0, 1)] *= POS_SCALE
-    ego_history[:, :, 4] *= VEL_SCALE
-
-    states = ego_history[:, :-Dim.Dt, :].reshape(B * (Dim.T - Dim.Dt), Dim.S)
-    controls = controls.reshape(B * (Dim.T - Dim.Dt), Dim.C)
+    states = ego_history[:, :-Dt, :].reshape(B * (Dim.T - Dt), Dim.S)
+    controls = controls.reshape(B * (Dim.T - Dt), Dim.C)
     pred_states = control_utils.integrate(states, controls)
+    gt_states = ego_history[:, Dt:, :].reshape(B * (Dim.T - Dt), Dim.S)
 
-    gt_states = ego_history[:, Dim.Dt:, :].reshape(B * (Dim.T - Dim.Dt))
-    err = pred_states[:, :2] - gt_states[:, :2]
-    err = err.square().sum(dim=1)
-    return torch.sqrt(err + 1e-5)
+    rel_pred = control_utils.relative_positions(states, pred_states)
+    rel_gt = control_utils.relative_positions(states, gt_states)
+    return rel_pred - rel_gt
 
 
 class MLSearchModule(pl.LightningModule):
@@ -78,21 +78,21 @@ class MLSearchModule(pl.LightningModule):
         agent_history: torch.Tensor,
         roadgraph: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        embedding_true = self.scene_encoder(
+        embedding = self.scene_encoder(
             agent_history=agent_history,
             roadgraph=roadgraph,
         )
-        embedding_input = embedding_true[:, :, :-Dim.Dt, :]
-        embedding_pred = self.world_model(
-            scene_embedding=embedding_input,
-            next_ego_state=agent_history[:, 0, Dim.Dt:, :],
+        controls = self.control_predictor(embedding)
+        next_ego_state = control_utils.integrate(
+            agent_history[:, 0, :, :].view(-1, Dim.S),
+            controls.view(-1, Dim.C),
         )
-        pred_control_dist = self.control_predictor(embedding_input)
-        return dict(
-            embedding_true=embedding_true[:, :, Dim.Dt:, :],
-            embedding_pred=embedding_pred,
-            pred_control_dist=pred_control_dist,
+        next_ego_state = next_ego_state.view(-1, Dim.T, Dim.S)
+        embedding = self.world_model(
+            scene_embedding=embedding,
+            next_ego_state=next_ego_state,
         )
+        return controls, embedding
 
     def _step(
         self: Self,
@@ -101,26 +101,32 @@ class MLSearchModule(pl.LightningModule):
         batch_idx: int,
     ) -> torch.Tensor:
         B = batch["agent_history"].shape[0]
-        D = B * Dim.A * (Dim.T - Dim.Dt)
 
-        out = self.forward(
+        embed_true = self.scene_encoder(
             agent_history=batch["agent_history"],
             roadgraph=batch["roadgraph"],
         )
+        embed_input = embed_true[:, :, :-Dt, :]
+        embed_pred = self.world_model(
+            scene_embedding=embed_input,
+            next_ego_state=batch["agent_history"][:, 0, Dt:, :],
+        )
+        controls = self.control_predictor(embed_input)
 
-        embedding_error = self.embedding_loss(
-            out["embedding_true"].reshape(D, self.EMBEDDING_DIM),
-            out["embedding_pred"].reshape(D, self.EMBEDDING_DIM),
+        D = B * Dim.A * (Dim.T - Dt)
+        embed_error = self.embedding_loss(
+            embed_true[:, :, Dt:, :].reshape(D, self.EMBEDDING_DIM).detach(),
+            embed_pred.reshape(D, self.EMBEDDING_DIM),
             target=torch.ones(D).to(self.device),
         )
         control_error = compute_control_error(
             batch["agent_history"][:, 0, :, :],
-            out["pred_control_dist"],
+            controls,
         )
 
-        control_loss = control_error.mean()
-        embedding_loss = embedding_error.mean()
-        loss = control_loss + 0.01 * embedding_loss
+        control_loss = control_error.square().sum(dim=1).abs().sqrt().mean()
+        embed_loss = embed_error.mean()
+        loss = control_loss + embed_loss
 
         training = (context == "train")
         log_kwargs = dict(
@@ -142,10 +148,19 @@ class MLSearchModule(pl.LightningModule):
         )
         self.log(
             f"{context}/embedding_loss",
-            embedding_loss,
+            embed_loss,
             **log_kwargs,
         )
-
+        self.log(
+            f"{context}/metric/long_err",
+            control_error[:, 0].abs().mean(),
+            **log_kwargs,
+        )
+        self.log(
+            f"{context}/metric/lat_err",
+            control_error[:, 1].abs().mean(),
+            **log_kwargs,
+        )
         return loss
 
     def training_step(

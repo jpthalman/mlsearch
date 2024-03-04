@@ -3,7 +3,7 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.config import Dim
+from data.config import Dim, POS_SCALE, VEL_SCALE
 from model.dense_block import DenseBlock
 from model.transformer_block import (
     DynamicLatentQueryAttentionBlock,
@@ -46,6 +46,10 @@ class WorldModel(nn.Module):
         scene_embedding = scene_embedding.contiguous()
         B = scene_embedding.shape[0]
         T = scene_embedding.shape[2]
+
+        next_ego_state = next_ego_state.clone()
+        next_ego_state[:, :, :2] /= POS_SCALE
+        next_ego_state[:, :, 4] /= VEL_SCALE
 
         # x[B, (A+1)*T, E]
         x = torch.cat(

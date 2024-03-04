@@ -31,9 +31,10 @@ def integrate(state: torch.Tensor, controls: torch.Tensor) -> torch.Tensor:
     s = dyaw.sin()
     c1 = c * c0 - s * s0
     s1 = s * c0 + c * s0
-    norm = torch.sqrt(c1**2 + s1**2)
-    c1 /= norm
-    s1 /= norm
+    # TODO: Why does this fail to compute gradients?
+    # norm = torch.sqrt(c1**2 + s1**2)
+    # c1 /= norm
+    # s1 /= norm
 
     return torch.cat(
         [
@@ -48,22 +49,37 @@ def integrate(state: torch.Tensor, controls: torch.Tensor) -> torch.Tensor:
     )
 
 
+def relative_positions(state: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
+    """
+    state[B, S]
+    next_state[B, S]
+    """
+    x0 = state[:, 0]
+    y0 = state[:, 1]
+    c0 = state[:, 2]
+    s0 = state[:, 3]
+    x1 = next_state[:, 0]
+    y1 = next_state[:, 1]
+    rx, ry = _inv_transform(x0, y0, c0, s0, x1, y1)
+    return torch.cat([rx.unsqueeze(1), ry.unsqueeze(1)], dim=1)
+
+
 def denormalize(controls: torch.Tensor) -> torch.Tensor:
     """
     controls[B, C]
     """
-    controls[:, 0] = (2 * controls[:, 0] - 1) * MAX_ACCEL
-    controls[:, 1] = (2 * controls[:, 1] - 1) * MAX_CURV
-    return controls
+    accel = (2 * controls[:, 0] - 1) * MAX_ACCEL
+    curv = (2 * controls[:, 1] - 1) * MAX_CURV
+    return torch.cat([accel.unsqueeze(1), curv.unsqueeze(1)], dim=1)
 
 
 def normalize(controls: torch.Tensor) -> torch.Tensor:
     """
     controls[B, C]
     """
-    controls[:, 0] = 0.5 * (controls[:, 0] / MAX_ACCEL + 1)
-    controls[:, 1] = 0.5 * (controls[:, 1] / MAX_CURV + 1)
-    return controls
+    accel = 0.5 * (controls[:, 0] / MAX_ACCEL + 1)
+    curv = 0.5 * (controls[:, 1] / MAX_CURV + 1)
+    return torch.cat([accel.unsqueeze(1), curv.unsqueeze(1)], dim=1)
 
 
 def discretize(controls: torch.Tensor) -> torch.Tensor:

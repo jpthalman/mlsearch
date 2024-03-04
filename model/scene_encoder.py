@@ -4,7 +4,7 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.config import Dim
+from data.config import Dim, POS_SCALE, VEL_SCALE
 from model.transformer_block import (
     DynamicLatentQueryAttentionBlock,
     LatentQueryAttentionBlock,
@@ -76,7 +76,6 @@ class SceneEncoder(nn.Module):
 
     def forward(
         self: Self,
-        *,
         agent_history: torch.Tensor,
         roadgraph: torch.Tensor,
     ) -> torch.Tensor:
@@ -85,6 +84,11 @@ class SceneEncoder(nn.Module):
         roadgraph[B, R, Rd]
         """
         B = agent_history.shape[0]
+        agent_history = agent_history.clone()
+        roadgraph = roadgraph.clone()
+        agent_history[:, :, :, :2] /= POS_SCALE
+        agent_history[:, :, :, 4] /= VEL_SCALE
+        roadgraph[:, :, :4] /= POS_SCALE
 
         agent_embed = self.agent_history_proj(agent_history)
         roadgraph_embed = self.roadgraph_proj(roadgraph)

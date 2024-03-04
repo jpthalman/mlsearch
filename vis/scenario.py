@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from data import controls as control_utils
-from data.config import TRAIN_DATA_ROOT, EXPERIMENT_ROOT, POS_SCALE, VEL_SCALE
+from data.config import TRAIN_DATA_ROOT, EXPERIMENT_ROOT
 from train.module import MLSearchModule
 
 
@@ -114,22 +114,12 @@ def draw_predictions(
     model = load_model(checkpoint_path)
     model.eval()
 
-    agent_history = agent_history.clone().to(model.device)
-    agent_history[:, :, :2] /= POS_SCALE
-    agent_history[:, :, 4] /= VEL_SCALE
-
-    roadgraph = roadgraph.clone().to(model.device)
-    roadgraph[:, :4] /= POS_SCALE
-
     embedding = model.scene_encoder(
-        agent_history=agent_history.unsqueeze(0),
-        roadgraph=roadgraph.unsqueeze(0),
+        agent_history=agent_history.to(model.device).unsqueeze(0),
+        roadgraph=roadgraph.to(model.device).unsqueeze(0),
     )
 
     states = agent_history[0, :, :]
-    states[:, :2] *= POS_SCALE
-    states[:, 4] *= VEL_SCALE
-
     data = [[[], []] for _ in range(agent_history.shape[1])]
     for t in range(agent_history.shape[1]):
         data[t][0].append(states[t, 0].cpu().item())
@@ -141,13 +131,9 @@ def draw_predictions(
         for t in range(agent_history.shape[1]):
             data[t][0].append(states[t, 0].cpu().item())
             data[t][1].append(states[t, 1].cpu().item())
-
-        states_norm = states.clone()
-        states_norm[:, :2] /= POS_SCALE
-        states_norm[:, 4] /= VEL_SCALE
         embedding = model.world_model(
             scene_embedding=embedding,
-            next_ego_state=states_norm.unsqueeze(0),
+            next_ego_state=states.unsqueeze(0),
         )
 
     predictions = []

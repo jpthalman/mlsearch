@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data.config import Dim, POS_SCALE, VEL_SCALE, TRAIN_DATA_ROOT
+from data.config import Dim, TRAIN_DATA_ROOT
 
 
 class AV2DataModule(pl.LightningDataModule):
@@ -62,13 +62,7 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
 
         history = torch.load(path / "agent_history.pt")
         history = history[:64, ::2, :]
-        history[:, :, 0] /= POS_SCALE
-        history[:, :, 1] /= POS_SCALE
-        history[:, :, 4] /= VEL_SCALE
-
         roadgraph = torch.load(path / "roadgraph.pt")
-        roadgraph[:, :4] /= POS_SCALE
-
         return dict(
             scenario_name=path.stem,
             agent_history=history,

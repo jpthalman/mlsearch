@@ -27,7 +27,6 @@ class Dim(enum.IntEnum):
     A = 64
     # Number of time steps
     T = 55
-    Dt = 5
     # Agent state size
     S = 7
     # Max agent interactions
