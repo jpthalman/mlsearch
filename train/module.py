@@ -37,8 +37,8 @@ def compute_control_error(ego_history, controls):
 
 class MLSearchModule(pl.LightningModule):
     # Model params
-    ENCODER_BLOCKS = 2
-    WORLD_MODEL_LAYERS = 2
+    ENCODER_BLOCKS = 4
+    WORLD_MODEL_LAYERS = 4
     EMBEDDING_DIM = 128
     HIDDEN_MULTIPLIER = 2**0.5
     NUM_HEADS = 2
