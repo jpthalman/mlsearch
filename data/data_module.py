@@ -61,7 +61,8 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
         path = self._paths[idx]
 
         history = torch.load(path / "agent_history.pt")
-        history = history[:64, ::2, :]
+        history = history[:Dim.A, ::2, :]
+        history[0, :, 5] = 0.0
         roadgraph = torch.load(path / "roadgraph.pt")
         return dict(
             scenario_name=path.stem,

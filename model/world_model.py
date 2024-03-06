@@ -65,13 +65,6 @@ class WorldModel(nn.Module):
         scene_embedding[B, A, T, E]
         next_ego_state[B, T, S]
         """
-        B = scene_embedding.shape[0]
-        T = scene_embedding.shape[2]
-
-        next_ego_state = next_ego_state.clone()
-        next_ego_state[:, :, :2] /= POS_SCALE
-        next_ego_state[:, :, 4] /= VEL_SCALE
-
         # ego_embedding[B, T, E]
         ego_embedding = self.state_encoder(next_ego_state)
         # scene_embedding[B, T, A, E]

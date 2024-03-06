@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from data import controls as control_utils
-from data.config import TRAIN_DATA_ROOT, EXPERIMENT_ROOT
+from data.config import Dim, TRAIN_DATA_ROOT, EXPERIMENT_ROOT
 from train.module import MLSearchModule
 
 
@@ -114,17 +114,16 @@ def draw_predictions(
     model = load_model(checkpoint_path)
     model.eval()
 
-    embedding = model.scene_encoder(
-        agent_history=agent_history.to(model.device).unsqueeze(0),
-        roadgraph=roadgraph.to(model.device).unsqueeze(0),
-    )
-
     states = agent_history[0, :, :]
     data = [[[], []] for _ in range(agent_history.shape[1])]
     for t in range(agent_history.shape[1]):
         data[t][0].append(states[t, 0].cpu().item())
         data[t][1].append(states[t, 1].cpu().item())
 
+    embedding = model.scene_encoder(
+        agent_history=agent_history.to(model.device).unsqueeze(0),
+        roadgraph=roadgraph.to(model.device).unsqueeze(0),
+    )
     for _ in range(depth):
         controls = model.control_predictor(embedding)
         states = control_utils.integrate(states, controls[0, :, :])
@@ -155,7 +154,8 @@ def load_scenario(
     depth: int,
 ) -> Iterable[go.Figure]:
     agent_history = torch.load(scenario_path / "agent_history.pt")
-    agent_history = agent_history[:64, ::2, :]
+    agent_history = agent_history[:Dim.A, ::2, :]
+    agent_history[0, :, 5] = 0.0
     roadgraph = torch.load(scenario_path / "roadgraph.pt")
 
     prediction_data = [[] for _ in range(agent_history.shape[1])]
@@ -206,10 +206,10 @@ def main():
 
         checkpoint_path = Path(st.text_input(
             "Checkpoint path",
-            str(EXPERIMENT_ROOT / "best.ckpt"),
+            "/home/jthalman/mlsearch/experiments/debug/last.ckpt",
         ))
 
-        depth = st.slider("Depth", 1, 11)
+        depth = st.slider("Depth", 1, 11, 5)
 
     scenes: Iterable[go.Figure] = load_scenario(scenario_path, checkpoint_path, depth)
     display_area = st.container()

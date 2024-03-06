@@ -53,25 +53,56 @@ class EncoderBlock(nn.Module):
         return agent_embed.contiguous()
 
 
-class SceneEncoder(nn.Module):
+class RoadgraphEncoder(nn.Module):
     def __init__(
         self: Self,
-        *,
         num_blocks: int,
+        downsample_frac: float,
         config: TransformerConfig,
     ) -> None:
         super().__init__()
 
         assert num_blocks > 0
+        assert 0 < downsample_frac < 1
 
         self.E = config.embed_dim
+        self.proj = nn.Linear(Dim.Rd, self.E)
+        self.blocks = nn.Sequential(*[
+            SelfAttentionBlock(config=config) for _ in range(num_blocks - 1)
+        ])
+        self.lq_block = LatentQueryAttentionBlock(
+            latent_query_length=math.ceil(downsample_frac * Dim.R),
+            config=config,
+        )
 
-        # TODO: Try RFF + Embedding projection
-        self.agent_history_proj = nn.Linear(Dim.S, self.E)
-        self.roadgraph_proj = nn.Linear(Dim.Rd, self.E)
+    def forward(self: Self, roadgraph: torch.Tensor) -> torch.Tensor:
+        embed = self.proj(roadgraph)
+        embed = self.blocks(embed)
+        return self.lq_block(embed)
 
-        self.blocks = nn.ModuleList([
-            EncoderBlock(config) for _ in range(num_blocks)
+
+class SceneEncoder(nn.Module):
+    def __init__(
+        self: Self,
+        *,
+        num_agent_blocks: int,
+        num_roadgraph_blocks: int,
+        roadgraph_downsample_frac: float,
+        config: TransformerConfig,
+    ) -> None:
+        super().__init__()
+
+        assert num_agent_blocks > 0
+
+        self.E = config.embed_dim
+        self.roadgraph_encoder = RoadgraphEncoder(
+            num_roadgraph_blocks,
+            roadgraph_downsample_frac,
+            config,
+        )
+        self.agent_proj = nn.Linear(Dim.S, self.E)
+        self.agent_blocks = nn.ModuleList([
+            EncoderBlock(config) for _ in range(num_agent_blocks)
         ])
 
     def forward(
@@ -83,15 +114,8 @@ class SceneEncoder(nn.Module):
         agent_history[B, A, T, S]
         roadgraph[B, R, Rd]
         """
-        B = agent_history.shape[0]
-        agent_history = agent_history.clone()
-        roadgraph = roadgraph.clone()
-        agent_history[:, :, :, :2] /= POS_SCALE
-        agent_history[:, :, :, 4] /= VEL_SCALE
-        roadgraph[:, :, :4] /= POS_SCALE
-
-        agent_embed = self.agent_history_proj(agent_history)
-        roadgraph_embed = self.roadgraph_proj(roadgraph)
-        for block in self.blocks:
+        agent_embed = self.agent_proj(agent_history)
+        roadgraph_embed = self.roadgraph_encoder(roadgraph)
+        for block in self.agent_blocks:
             agent_embed = block(agent_embed, roadgraph_embed)
         return agent_embed

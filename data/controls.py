@@ -7,7 +7,7 @@ MAX_CURV = 0.1
 MAX_ACCEL = 10.0
 
 
-def integrate(state: torch.Tensor, controls: torch.Tensor) -> torch.Tensor:
+def integrate(state: torch.Tensor, controls_norm: torch.Tensor) -> torch.Tensor:
     """
     state[B, S]
     controls[B, C]
@@ -18,7 +18,7 @@ def integrate(state: torch.Tensor, controls: torch.Tensor) -> torch.Tensor:
     s0 = state[:, 3]
     v0 = state[:, 4]
 
-    controls = denormalize(controls)
+    controls = denormalize(controls_norm)
     accel = controls[:, 0]
     curv = controls[:, 1]
 
@@ -29,12 +29,11 @@ def integrate(state: torch.Tensor, controls: torch.Tensor) -> torch.Tensor:
     dyaw = curv * arclen
     c = dyaw.cos()
     s = dyaw.sin()
-    c1 = c * c0 - s * s0
-    s1 = s * c0 + c * s0
-    # TODO: Why does this fail to compute gradients?
-    # norm = torch.sqrt(c1**2 + s1**2)
-    # c1 /= norm
-    # s1 /= norm
+    c1_n = c * c0 - s * s0
+    s1_n = s * c0 + c * s0
+    norm = torch.sqrt(c1_n**2 + s1_n**2)
+    c1 = c1_n / norm
+    s1 = s1_n / norm
 
     return torch.cat(
         [
@@ -47,6 +46,20 @@ def integrate(state: torch.Tensor, controls: torch.Tensor) -> torch.Tensor:
         ],
         dim=1,
     )
+
+
+def compute_controls(state: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
+    """
+    state[B, S]
+    next_state[B, S]
+    """
+    rel_gt = relative_positions(state, next_state)
+    curv, arclen = _SegmentCurvAndArclen.apply(rel_gt[:, 0], rel_gt[:, 1])
+    v0 = state[:, 4]
+    v1 = (2 * arclen - v0).relu()
+    accel = v1 - v0
+    controls = torch.cat([accel.unsqueeze(1), curv.unsqueeze(1)], dim=1)
+    return normalize(controls)
 
 
 def relative_positions(state: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
@@ -78,7 +91,9 @@ def normalize(controls: torch.Tensor) -> torch.Tensor:
     controls[B, C]
     """
     accel = 0.5 * (controls[:, 0] / MAX_ACCEL + 1)
+    accel = accel.clamp(0.0, 1.0)
     curv = 0.5 * (controls[:, 1] / MAX_CURV + 1)
+    curv = curv.clamp(0.0, 1.0)
     return torch.cat([accel.unsqueeze(1), curv.unsqueeze(1)], dim=1)
 
 
@@ -141,6 +156,14 @@ def _inv_transform(x, y, cyaw, syaw, x1, y1):
 class _SegmentCurvAndArclen(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, y):
+        mask = x.abs() < 0.2
+        z = torch.zeros_like(x)
+        theta = 2 * torch.atan2(y, x)
+        arclen = torch.where(mask, z, x / _Sinc.apply(theta / torch.pi))
+        curv = torch.where(mask, z, theta / arclen)
+        ctx.save_for_backward(x, y, theta, curv, arclen, mask)
+        return curv, arclen
+
         if x.abs() < 1e-5:
             z = torch.zeros_like(x)
             ctx.save_for_backward(z, z, z, z, z)
@@ -154,6 +177,22 @@ class _SegmentCurvAndArclen(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_curv, grad_arclen):
+        x, y, theta, curv, arclen, mask = ctx.saved_tensors
+        s = torch.sin(theta)
+        c = torch.cos(theta)
+        D = x**2 + y**2
+
+        dtheta_dx = -2 * y / D
+        dtheta_dy = 2 * x / D
+        darclen_dx = (s * (dtheta_dx - theta) - theta*x*c*dtheta_dx) / s**2
+        darclen_dy = (x*s*dtheta_dy - theta*x*c*dtheta_dy) / s**2
+        dcurv_dx = (x*c*dtheta_dx - s) / x**2
+        dcurv_dy = dtheta_dy*c/x
+
+        out_grad_curv = torch.where(mask, torch.zeros_like(grad_curv), grad_curv * (dcurv_dx + dcurv_dy) / 2)
+        out_grad_arclen = torch.where(mask, torch.zeros_like(grad_arclen), grad_arclen * (darclen_dx + darclen_dy) / 2)
+        return out_grad_curv, out_grad_arclen
+
         x, y, theta, curv, arclen = ctx.saved_tensors
         if x == 0:
             return grad_curv, grad_arclen
