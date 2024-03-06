@@ -3,13 +3,40 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.config import Dim
+from data.config import Dim, POS_SCALE, VEL_SCALE
 from model.dense_block import DenseBlock
 from model.transformer_block import (
-    DynamicLatentQueryAttentionBlock,
     SelfAttentionBlock,
+    TransformerBlock,
     TransformerConfig,
 )
+
+
+class EncoderBlock(nn.Module):
+    def __init__(self: Self, config: TransformerConfig) -> None:
+        super().__init__()
+        self.E = config.embed_dim
+        self.self_attn = SelfAttentionBlock(config=config)
+        self.cross_attn = TransformerBlock(config=config)
+
+    def forward(
+        self: Self,
+        scene_embedding: torch.Tensor,
+        ego_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        scene_embedding[B, T, A, E]
+        ego_embedding[B, T, E]
+        """
+        B = scene_embedding.shape[0]
+        T = scene_embedding.shape[1]
+
+        scene_embedding = scene_embedding.view(B*T, Dim.A, self.E)
+        ego_embedding = ego_embedding.unsqueeze(2).view(B*T, 1, self.E)
+
+        scene_embedding = self.cross_attn(scene_embedding, ego_embedding)
+        scene_embedding = self.self_attn(scene_embedding)
+        return scene_embedding.view(B, T, Dim.A, self.E)
 
 
 class WorldModel(nn.Module):
@@ -25,56 +52,26 @@ class WorldModel(nn.Module):
 
         self.E = config.embed_dim
         self.encoders = nn.ModuleList([
-            SelfAttentionBlock(config=config) for _ in range(num_layers)
+            EncoderBlock(config=config) for _ in range(num_layers)
         ])
-        self.control_encoder = DenseBlock(
-            input_dim=Dim.C,
-            hidden_dim=self.E,
-            output_dim=self.E,
-            dropout=config.dropout,
-        )
+        self.state_encoder = nn.Linear(Dim.S, self.E)
 
     def forward(
         self: Self,
         scene_embedding: torch.Tensor,
-        controls: torch.Tensor,
+        next_ego_state: torch.Tensor,
     ) -> torch.Tensor:
         """
         scene_embedding[B, A, T, E]
-        controls[B, T, C]
+        next_ego_state[B, T, S]
         """
-        B = scene_embedding.shape[0]
+        # ego_embedding[B, T, E]
+        ego_embedding = self.state_encoder(next_ego_state)
+        # scene_embedding[B, T, A, E]
+        scene_embedding = scene_embedding.transpose(1, 2).contiguous()
 
-        # x[B, (A+1)*T, E]
-        x = torch.cat(
-            [
-                scene_embedding.view(B, Dim.A * Dim.T, self.E),
-                self.control_encoder(controls),
-            ],
-            dim=1,
-        )
-
-        # Computes a block-causal mask with shape:
-        # [0 0 1 1 1 1]
-        # [0 0 1 1 1 1]
-        # [0 0 0 0 1 1]
-        # [0 0 0 0 1 1]
-        # [0 0 0 0 0 0]
-        # [0 0 0 0 0 0]
-        # Since we are combining the agent and temporal dimension, there are
-        # A elements per time step, so we need to expand the causal mask to
-        # match that.
-        causal_mask = torch.ones([Dim.T, Dim.T], device=controls.device).bool()
-        causal_mask = torch.tril(causal_mask).logical_not()
-        causal_mask = torch.repeat_interleave(causal_mask, Dim.A + 1, dim=0)
-        causal_mask = torch.repeat_interleave(causal_mask, Dim.A + 1, dim=1)
-        # causal_mask[B, (A+1)*T, (A+1)*T]
-        causal_mask = causal_mask.unsqueeze(0).expand(B, -1, -1)
-
-        # x[B, (A+1)*T, E]
         for encoder in self.encoders:
-            x = encoder(x, causal_mask)
+            scene_embedding = encoder(scene_embedding, ego_embedding)
 
-        # x[B, A*T, E]
-        x = x[:, :(Dim.A * Dim.T), :]
-        return x.view(B, Dim.A, Dim.T, self.E)
+        # scene_embedding[B, A, T, E]
+        return scene_embedding.transpose(1, 2).contiguous()

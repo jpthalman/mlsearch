@@ -1,4 +1,12 @@
 import enum
+from pathlib import Path
+
+
+LOCAL_ROOT_DIR = Path("~/mlsearch").expanduser()
+EXPERIMENT_ROOT = LOCAL_ROOT_DIR / "experiments"
+DATA_ROOT = LOCAL_ROOT_DIR / "data"
+TRAIN_DATA_ROOT = DATA_ROOT / "train"
+TEST_DATA_ROOT = DATA_ROOT / "test"
 
 # AV2 assumes 11sec history at 10hz
 AV2_MAX_TIME = 110
@@ -16,9 +24,9 @@ Enum for configured dimensions of scenario tensors.
 """
 class Dim(enum.IntEnum):
     # Max agents
-    A = 64
+    A = 1
     # Number of time steps
-    T = 10
+    T = 55
     # Agent state size
     S = 7
     # Max agent interactions
@@ -26,7 +34,7 @@ class Dim(enum.IntEnum):
     # Number of roadgraph features
     R = 1024
     # Dimension of roadgraph features
-    Rd = 7
+    Rd = 8
     # Dimension of the controls that can be applied to the vehicle
     C = 2
     # Discretization of each control dimension

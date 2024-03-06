@@ -27,41 +27,6 @@ def distance_between_object_states(object_state_1: ObjectState, object_state_2: 
     return np.sqrt((position_1[0] - position_2[0])**2 + (position_1[1] - position_2[1])**2)
 
 """
-Constructs a state feature list from an object state and track.
-
-Args:
-    track (Track) : Used for object type and track category.
-    object_state (ObjectState) : Used for inertial data.
-
-Returns:
-    List: [x, y, cos(yaw), sin(yaw), vx, vy, object_type, track_category]
-    Note: x, y are in map frame but vx, vy are heading relative to the object
-"""
-def extract_state_features(
-    track: Track,
-    object_state: ObjectState,
-    ref_point: Tuple[float, float],
-) -> torch.Tensor:
-    c = np.cos(object_state.heading)
-    s = np.sin(object_state.heading)
-
-    # Velocities are provided in map frame, rotate to be heading-relative
-    gvx = object_state.velocity[0]
-    gvy = object_state.velocity[1]
-    vx = c * gvx + s * gvy
-    vy = -s * gvx + c * gvy
-
-    object_state_list = []
-    object_state_list.append(object_state.position[0] - ref_point[0])
-    object_state_list.append(object_state.position[1] - ref_point[1])
-    object_state_list.append(c)
-    object_state_list.append(s)
-    object_state_list.append(vx)
-    object_state_list.append(vy)
-    object_state_list.append(_object_type_to_int(track.object_type))
-    return torch.Tensor(object_state_list)
-
-"""
 Iterates through object states of a track to find the one associated with the
 provided timestep.
 
@@ -140,5 +105,5 @@ Args:
 Returns:
     int: Integer representation of ObjectType enum.
 """
-def _object_type_to_int(object_type: ObjectType) -> int:
+def object_type_to_int(object_type: ObjectType) -> int:
     return list(ObjectType).index(object_type) + 1

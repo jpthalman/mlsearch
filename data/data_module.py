@@ -7,17 +7,23 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data.config import Dim
+from data.config import Dim, TRAIN_DATA_ROOT
 
 
 class AV2DataModule(pl.LightningDataModule):
     def __init__(self: Self, *, batch_size: int) -> None:
         super().__init__()
         self._batch_size = batch_size
+        generator = torch.Generator().manual_seed(42)
+        self._train, self._val = torch.utils.data.random_split(
+            dataset=AV2Dataset(TRAIN_DATA_ROOT),
+            lengths=[0.95, 0.05],
+            generator=generator,
+        )
 
     def train_dataloader(self: Self) -> DataLoader:
         return DataLoader(
-            AV2Dataset("train"),
+            self._train,
             batch_size=self._batch_size,
             num_workers=os.cpu_count(),
             shuffle=True,
@@ -25,26 +31,17 @@ class AV2DataModule(pl.LightningDataModule):
 
     def val_dataloader(self: Self) -> DataLoader:
         return DataLoader(
-            AV2Dataset("val"),
+            self._val,
             batch_size=self._batch_size,
             num_workers=os.cpu_count(),
         )
 
 
 class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
-    ROOT = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2")
-    FILTERED_SCENARIOS_PATH = Path("data/filtered_scenarios.txt")
-
-    def __init__(self: Self, name: str) -> None:
-        with open(self.FILTERED_SCENARIOS_PATH, "r") as f:
-            filtered = set(f.read().split("\n"))
-
+    def __init__(self: Self, root: Path) -> None:
         self._paths = []
-        root = self.ROOT / name
-        print(f"Collecting {name} scenario info...")
+        print(f"Collecting scenario info from {str(root)}...")
         for path in root.iterdir():
-            if path in filtered:
-                continue
             self._paths.append(path)
 
     """
@@ -62,15 +59,15 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
     """
     def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
         path = self._paths[idx]
+
+        history = torch.load(path / "agent_history.pt")
+        history = history[:Dim.A, ::2, :]
+        history[0, :, 5] = 0.0
+        roadgraph = torch.load(path / "roadgraph.pt")
         return dict(
-            scenario_name=torch.load(path / "scenario_name.pt"),
-            agent_history=torch.load(path / "agent_history.pt"),
-            agent_history_mask=torch.load(path / "agent_history_mask.pt"),
-            agent_interactions=torch.load(path / "agent_interactions.pt"),
-            agent_interactions_mask=torch.load(path / "agent_interactions_mask.pt"),
-            roadgraph=torch.load(path / "roadgraph.pt"),
-            roadgraph_mask=torch.load(path / "roadgraph_mask.pt"),
-            ground_truth_controls=torch.load(path / "ground_truth_controls.pt"),
+            scenario_name=path.stem,
+            agent_history=history,
+            roadgraph=roadgraph,
         )
 
     def __len__(self: Self) -> int:

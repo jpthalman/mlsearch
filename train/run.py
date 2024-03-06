@@ -10,11 +10,11 @@ import comet_ml
 import torch
 import pytorch_lightning as pl
 
+from data.config import EXPERIMENT_ROOT
 from data.data_module import AV2DataModule
 from train.module import MLSearchModule
 
 
-OUTPUT_ROOT = Path("/tmp/mlsearch")
 API_KEY_WARNING = """
 === COMET API KEY NOT FOUND ===
 Create an account on https://www.comet.com/, go to Account Setting -> API Keys -> Copy
@@ -60,7 +60,7 @@ def main() -> None:
 
     max_epochs = 10 if args.for_real else 1
     max_steps = -1 if args.for_real else 1000
-    output_root = OUTPUT_ROOT / args.name
+    output_root = EXPERIMENT_ROOT / args.name
     output_root.mkdir(exist_ok=True, parents=True)
 
     torch.set_float32_matmul_precision("medium")
@@ -79,16 +79,18 @@ def main() -> None:
             pl.callbacks.LearningRateMonitor(),
             pl.callbacks.ModelCheckpoint(
                 dirpath=output_root,
-                filename="epoch_{epoch}",
+                filename="last",
+                enable_version_counter=False,
             ),
             pl.callbacks.ModelCheckpoint(
                 dirpath=output_root,
                 monitor="val/loss",
-                filename="best_val_loss_{epoch}",
+                filename="best_val_loss",
+                enable_version_counter=False,
             ),
         ],
     )
-    trainer.fit(model, datamodule=AV2DataModule(batch_size=27))
+    trainer.fit(model, datamodule=AV2DataModule(batch_size=30))
 
 
 if __name__ == "__main__":
