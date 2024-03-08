@@ -8,6 +8,7 @@ import streamlit as st
 from data import controls as control_utils
 from data.config import Dim, TRAIN_DATA_ROOT, EXPERIMENT_ROOT
 from train.module import MLSearchModule
+import numpy as np
 
 
 @st.cache_resource
@@ -114,37 +115,35 @@ def draw_predictions(
     model = load_model(checkpoint_path)
     model.eval()
 
-    states = agent_history[0, :, :]
-    data = [[[], []] for _ in range(agent_history.shape[1])]
-    for t in range(agent_history.shape[1]):
-        data[t][0].append(states[t, 0].cpu().item())
-        data[t][1].append(states[t, 1].cpu().item())
-
     embedding = model.scene_encoder(
         agent_history=agent_history.to(model.device).unsqueeze(0),
         roadgraph=roadgraph.to(model.device).unsqueeze(0),
     )
-    for _ in range(depth):
-        controls = model.control_predictor(embedding)
-        states = control_utils.integrate(states, controls[0, :, :])
-        for t in range(agent_history.shape[1]):
-            data[t][0].append(states[t, 0].cpu().item())
-            data[t][1].append(states[t, 1].cpu().item())
-        embedding = model.world_model(
-            scene_embedding=embedding,
-            next_ego_state=states.unsqueeze(0),
+    controls = model.control_predictor(embedding).exp()
+    controls = controls[0, :, :].reshape(Dim.T, Dim.Cd, Dim.Cd)
+
+    out = []
+    for t in range(Dim.T):
+        x = np.linspace(0, Dim.Cd) - Dim.Cd // 2 - 1
+        Z = controls[t, :, :].detach().numpy()
+        heatmap = go.Heatmap(
+            x=x,
+            y=x,
+            z=Z,
+            colorscale='Viridis'
         )
 
-    predictions = []
-    for e in data:
-        pred = go.Scatter(
-            x=e[0],
-            y=e[1],
-            mode="lines+markers",
-            line=dict(color="rgb(255,64,64)"),
+        fig = go.Figure(
+            data=[heatmap],
+            layout=go.Layout(
+                height=500,
+                width=500,
+                showlegend=False,
+                uirevision="42",
+            ),
         )
-        predictions.append([pred])
-    return predictions
+        out.append(fig)
+    return out
 
 
 @st.cache_resource
@@ -172,7 +171,7 @@ def load_scenario(
     for t in range(agent_history.shape[1]):
         agent_data = draw_agents(agent_history[:, t, :])
         figure = go.Figure(
-            data=roadgraph_data + agent_data + prediction_data[t],
+            data=roadgraph_data + agent_data,
             layout=go.Layout(
                 height=1000,
                 width=1000,
@@ -186,7 +185,7 @@ def load_scenario(
             ),
         )
         figures.append(figure)
-    return figures
+    return figures, prediction_data
 
 
 def main():
@@ -211,13 +210,11 @@ def main():
 
         depth = st.slider("Depth", 1, 11, 5)
 
-    scenes: Iterable[go.Figure] = load_scenario(scenario_path, checkpoint_path, depth)
+    scenes, preds = load_scenario(scenario_path, checkpoint_path, depth)
     display_area = st.container()
     index = st.slider("Index", 0, len(scenes) - 1)
-    display_area.plotly_chart(
-        scenes[index],
-        use_container_width=True,
-    )
+    display_area.plotly_chart(scenes[index])
+    display_area.plotly_chart(preds[index])
 
 
 if __name__ == "__main__":

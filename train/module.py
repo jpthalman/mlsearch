@@ -18,24 +18,70 @@ from model.world_model import WorldModel
 Dt = 5
 
 
-def compute_control_error(ego_history, controls):
+def compute_control_error(ego_history, control_likelihood):
     """
     ego_history[B, T, S]
-    controls[B, T, C]
+    control_likelihood[B, T, Cd**2]
     """
     B = ego_history.shape[0]
 
+    # controls[Cd**2, C]
+    controls = control_utils.compute_all_controls().reshape(Dim.Cd**2, Dim.C)
+    controls = controls.to(ego_history.device)
+    # controls[B*(T-Dt), Cd**2, C]
+    controls = controls.unsqueeze(0).repeat(B * (Dim.T - Dt), 1, 1)
+    # controls[B*(T-Dt)*Cd**2, C]
+    controls = controls.view(B * (Dim.T - Dt) * Dim.Cd**2, Dim.C)
+
+    # states[B*(T-Dt), S]
     states = ego_history[:, :-Dt, :].reshape(B * (Dim.T - Dt), Dim.S)
-    controls = controls[:, :-Dt, :].reshape(B * (Dim.T - Dt), Dim.C)
+    # states[B*(T-Dt), Cd**2, S]
+    states = states.unsqueeze(1).repeat(1, Dim.Cd**2, 1)
+    # states[B*(T-Dt)*Cd**2, S]
+    states = states.view(B * (Dim.T - Dt) * Dim.Cd**2, Dim.S)
+
+    # Integrate each state forward using every discretized control
     next_states = control_utils.integrate(states, controls)
 
+    # pos_gt[B*(T-Dt), 2]
     pos_gt = ego_history[:, Dt:, :2].reshape(B * (Dim.T - Dt), 2)
+    # pos_gt[B*(T-Dt), Cd**2, 2]
+    pos_gt = pos_gt.unsqueeze(1).repeat(1, Dim.Cd**2, 1)
+    # pos_gt[B*(T-Dt)*Cd**2, 2]
+    pos_gt = pos_gt.view(B * (Dim.T - Dt) * Dim.Cd**2, 2)
+
     pos_pred = next_states[:, :2]
     rel_gt = control_utils.relative_positions(states[:, :4], pos_gt)
     rel_pred = control_utils.relative_positions(states[:, :4], pos_pred)
-    err = rel_pred - rel_gt
-    std = rel_gt.abs().detach().std(dim=0)
-    return err.abs() / (std + 1e-2)
+    error = rel_pred - rel_gt
+    # error = error.abs() / (rel_gt.abs().detach().std(dim=0) + 1e-2)
+
+    tmp = rel_pred.reshape(B * (Dim.T - Dt), Dim.Cd**2, 2)
+    tmp = tmp.detach().std(dim=1) + 1e-2
+    tmp = tmp.unsqueeze(1).repeat(1, Dim.Cd**2, 1)
+    tmp = tmp.reshape(B * (Dim.T - Dt) * Dim.Cd**2, 2)
+    error = error.abs() / tmp
+
+    # control_likelihood[B, T-Dt, Cd**2]
+    control_likelihood = control_likelihood[:, :-Dt, :]
+    control_likelihood = control_likelihood.reshape(B * (Dim.T - Dt), Dim.Cd**2)
+    # likelihood_gt[B*(T-Dt), Cd**2]
+    likelihood_gt = -error.norm(dim=-1).square()
+    likelihood_gt = likelihood_gt.reshape(B * (Dim.T - Dt), Dim.Cd**2)
+    likelihood_gt = likelihood_gt.log_softmax(dim=-1)
+    loss = torch.nn.functional.kl_div(
+        control_likelihood,
+        likelihood_gt,
+        reduction="batchmean",
+        log_target=True,
+    )
+
+    error = error.reshape(B*(Dim.T - Dt), Dim.Cd**2, 2)
+    idx = error.norm(dim=-1).argmin(dim=-1).unsqueeze(1)
+    prob_pred = control_likelihood.exp().gather(1, idx)
+    prob_gt = likelihood_gt.exp().gather(1, idx)
+    confidence = prob_pred / prob_gt.clamp(min=1e-3)
+    return loss, confidence
 
 
 class MLSearchModule(pl.LightningModule):
@@ -55,7 +101,7 @@ class MLSearchModule(pl.LightningModule):
 
     # Loss params
     EMBEDDING_LOSS_SCALE = 0.05
-    CONTROL_WARMUP_FRAC = 0.5
+    CONTROL_WARMUP_FRAC = 1.0
 
     def __init__(self: Self) -> None:
         super().__init__()
@@ -92,7 +138,9 @@ class MLSearchModule(pl.LightningModule):
             agent_history=agent_history,
             roadgraph=roadgraph,
         )
-        controls = self.control_predictor(embedding)
+        control_likelihood = self.control_predictor(embedding)
+        control_discrete = control_likelihood.argmax(dim=-1)
+        controls = control_utils.undiscretize(control_discrete)
         next_ego_state = control_utils.integrate(
             agent_history[:, 0, :, :].view(-1, Dim.S),
             controls.view(-1, Dim.C),
@@ -120,7 +168,7 @@ class MLSearchModule(pl.LightningModule):
             scene_embedding=embed_true,
             next_ego_state=batch["agent_history"][:, 0, :, :],
         )
-        controls = self.control_predictor(embed_true)
+        control_likelihood = self.control_predictor(embed_true)
 
         embed_pred = embed_pred[:, :, :-Dt, :]
 
@@ -134,11 +182,10 @@ class MLSearchModule(pl.LightningModule):
         if self.global_step < self._control_warmup_steps():
             embed_loss = embed_loss.detach()
 
-        control_error = compute_control_error(
+        control_loss, confidence = compute_control_error(
             batch["agent_history"][:, 0, :, :],
-            controls,
+            control_likelihood,
         )
-        control_loss = control_error.abs().mean()
 
         loss = control_loss + embed_loss
 
@@ -171,13 +218,8 @@ class MLSearchModule(pl.LightningModule):
             **log_kwargs,
         )
         self.log(
-            f"{context}/metric/long_err",
-            control_error[:, 0].abs().mean(),
-            **log_kwargs,
-        )
-        self.log(
-            f"{context}/metric/lat_err",
-            control_error[:, 1].abs().mean(),
+            f"{context}/metric/confidence",
+            confidence.mean(),
             **log_kwargs,
         )
         return loss

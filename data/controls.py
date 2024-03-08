@@ -122,6 +122,18 @@ def undiscretize(discrete: torch.Tensor) -> torch.Tensor:
     return torch.stack([accel_continuous, steer_continuous], dim=-1)
 
 
+def compute_all_controls() -> torch.Tensor:
+    B = (Dim.Cd - 1) // 2
+    accel_discrete, steer_discrete = torch.meshgrid(
+        torch.arange(Dim.Cd),
+        torch.arange(Dim.Cd),
+        indexing='ij',
+    )
+    accel = _debucketize(accel_discrete, B)
+    steer = _debucketize(steer_discrete, B)
+    return torch.stack([accel, steer], dim=-1)
+
+
 def _bucketize(x: torch.Tensor, buckets: int):
     scaled = 2 * (x - 0.5)
     sign = torch.sign(scaled)
