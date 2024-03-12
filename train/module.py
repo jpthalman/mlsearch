@@ -123,11 +123,13 @@ class MLSearchModule(pl.LightningModule):
         controls = self.control_predictor(embed_true)
 
         embed_pred = embed_pred[:, :, :-Dt, :]
+        embed_present = embed_true[:, :, :-Dt, :]
+        embed_future = embed_true[:, :, Dt:, :]
 
         scale = 0.1 * embed_true.detach().norm(dim=-1).mean() + 1e-3
-        embed_pred_error = (embed_pred - embed_true[:, :, Dt:, :]) / scale
+        embed_pred_error = (embed_pred - embed_future) / scale
         embed_pred_error = embed_pred_error.norm(dim=-1)
-        embed_similarity = (embed_true[:, :, :-Dt, :] - embed_true[:, :, Dt:, :]) / scale
+        embed_similarity = (embed_present - embed_future) / scale
         embed_similarity = (-embed_similarity.norm(dim=-1)).exp()
         embed_loss = embed_pred_error.mean() + embed_similarity.mean()
         embed_loss *= self.EMBEDDING_LOSS_SCALE
@@ -218,6 +220,8 @@ class MLSearchModule(pl.LightningModule):
             ),
         )
 
+    def _total_steps(self: Self) -> int:
+        return self.trainer.estimated_stepping_batches
+
     def _control_warmup_steps(self: Self) -> int:
-        total_steps = self.trainer.estimated_stepping_batches
-        return int(self.CONTROL_WARMUP_FRAC * total_steps)
+        return math.ceil(self.CONTROL_WARMUP_FRAC * self._total_steps())

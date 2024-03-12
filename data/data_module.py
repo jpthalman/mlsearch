@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 from typing_extensions import Self
 
 import pytorch_lightning as pl
@@ -57,32 +57,22 @@ class AV2Dataset(Dataset[Dict[str, torch.Tensor]]):
             ground_truth_controls= [Dim.T, Dim.C],
         )
     """
-    def __getitem__(self: Self, idx: int) -> Dict[str, torch.Tensor]:
-        path = self._paths[idx]
-
-        history = torch.load(path / "agent_history.pt")
-        history = history[:Dim.A, ::2, :]
-        history[0, :, 5] = 0.0
-        roadgraph = torch.load(path / "roadgraph.pt")
-        return dict(
-            scenario_name=path.stem,
-            agent_history=history,
-            roadgraph=roadgraph,
-        )
+    def __getitem__(self: Self, idx: int) -> Dict[str, Union[str, torch.Tensor]]:
+        return load_tensors_from_scenario_dir(self._paths[idx])
 
     def __len__(self: Self) -> int:
         return len(self._paths)
 
 
-def main():
-    test_tensors_path = Path("/mnt/sun-tcs02/planner/shared/zRL/jthalman/av2/train/0000b0f9-99f9-4a1f-a231-5be9e4c523f7/data.pt")
-    tensors_dict = torch.load(test_tensors_path)
-    for k, v in tensors_dict.items():
-        print(k)
-        if type(v) == str:
-            print(v)
-        else:
-            print(v.shape)
-
-if __name__ == "__main__":
-    main()
+def load_tensors_from_scenario_dir(
+    scenario_dir: Path,
+) -> Dict[str, Union[str, torch.Tensor]]:
+    history = torch.load(scenario_dir / "agent_history.pt")
+    history = history[:Dim.A, ::2, :]
+    history[0, :, 5] = 0.0
+    roadgraph = torch.load(scenario_dir / "roadgraph.pt")
+    return dict(
+        scenario_name=scenario_dir.stem,
+        agent_history=history,
+        roadgraph=roadgraph,
+    )

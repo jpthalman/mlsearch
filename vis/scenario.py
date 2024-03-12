@@ -206,10 +206,10 @@ def main():
 
         checkpoint_path = Path(st.text_input(
             "Checkpoint path",
-            "/home/jthalman/mlsearch/experiments/debug/last.ckpt",
+            Path().parent / "model" / "best_weights.ckpt",
         ))
 
-        depth = st.slider("Depth", 1, 11, 5)
+        depth = st.slider("Depth", 0, 11, 5)
 
     scenes: Iterable[go.Figure] = load_scenario(scenario_path, checkpoint_path, depth)
     display_area = st.container()
