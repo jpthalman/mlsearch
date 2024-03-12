@@ -1,14 +1,12 @@
 import concurrent.futures
 import logging
 import requests
-import shutil
 import tarfile
 import tempfile
 import time
 import traceback
 from pathlib import Path
 
-import torch
 import tqdm
 
 from data.config import TRAIN_DATA_ROOT, TEST_DATA_ROOT

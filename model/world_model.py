@@ -3,8 +3,7 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.config import Dim, POS_SCALE, VEL_SCALE
-from model.dense_block import DenseBlock
+from data.config import Dim
 from model.transformer_block import (
     SelfAttentionBlock,
     TransformerBlock,

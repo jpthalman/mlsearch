@@ -5,7 +5,7 @@ from typing_extensions import Self
 
 import pytorch_lightning as pl
 import torch
-from torch.optim.lr_scheduler import LinearLR, SequentialLR
+from torch.optim.lr_scheduler import LinearLR
 
 from data import controls as control_utils
 from data.config import Dim

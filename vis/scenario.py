@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from data import controls as control_utils
-from data.config import Dim, TRAIN_DATA_ROOT, EXPERIMENT_ROOT
+from data.config import Dim, TRAIN_DATA_ROOT
 from train.module import MLSearchModule
 
 
