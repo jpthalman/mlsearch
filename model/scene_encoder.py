@@ -31,25 +31,26 @@ class EncoderBlock(nn.Module):
         roadgraph_embed[B, R, E]
         """
         B = agent_embed.shape[0]
+        T = agent_embed.shape[2]
         E = agent_embed.shape[3]
 
-        causal_mask = torch.ones([Dim.T, Dim.T], device=agent_embed.device).bool()
+        causal_mask = torch.ones([T, T], device=agent_embed.device).bool()
         causal_mask = torch.tril(causal_mask).logical_not()
         causal_mask = causal_mask.unsqueeze(0).expand(B * Dim.A, -1, -1)
 
         # Causal self-attention over time
-        agent_embed = agent_embed.view(B * Dim.A, Dim.T, E)
+        agent_embed = agent_embed.view(B * Dim.A, T, E)
         agent_embed = self.temporal_self_attn(agent_embed, mask=causal_mask)
-        agent_embed = agent_embed.view(B, Dim.A, Dim.T, E)
+        agent_embed = agent_embed.view(B, Dim.A, T, E)
 
         # Cross-attention with map
-        agent_embed = agent_embed.transpose(1, 2).reshape(B * Dim.T, Dim.A, E)
-        roadgraph_embed = roadgraph_embed.repeat(Dim.T, 1, 1)
+        agent_embed = agent_embed.transpose(1, 2).reshape(B * T, Dim.A, E)
+        roadgraph_embed = roadgraph_embed.repeat(T, 1, 1)
         agent_embed = self.map_cross_attn(agent_embed, roadgraph_embed)
 
         # Social self-attention over agents
         agent_embed = self.social_self_attn(agent_embed)
-        agent_embed = agent_embed.view(B, Dim.T, Dim.A, E).transpose(1, 2)
+        agent_embed = agent_embed.view(B, T, Dim.A, E).transpose(1, 2)
         return agent_embed.contiguous()
 
 

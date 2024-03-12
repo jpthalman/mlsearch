@@ -9,7 +9,6 @@ dependencies:
   - attrs
   - av2
   - comet_ml
-  - pandas==2.0.3
   - numpy
   - plotly
   - python=3.10
