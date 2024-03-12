@@ -8,9 +8,6 @@ import numpy as np
 from av2.datasets.motion_forecasting.data_schema import (
     ArgoverseScenario,
     Track,
-    ObjectState,
-    ObjectType,
-    TrackCategory,
 )
 from av2.datasets.motion_forecasting.scenario_serialization import (
     load_argoverse_scenario_parquet
@@ -19,9 +16,6 @@ from av2.map.map_api import ArgoverseStaticMap
 
 from data import roadgraph
 from data.scenario_tensor_converter_utils import (
-    distance_between_object_states,
-    object_state_at_timestep,
-    object_state_to_string,
     object_type_to_int,
     min_distance_between_tracks,
     padded_object_state_iterator,
@@ -50,10 +44,10 @@ class ScenarioTensorConverter:
         self.agent_interactions_path = scenario_dir / "agent_interactions.pt"
         self.roadgraph_path = scenario_dir / "roadgraph.pt"
 
-        self._scenario = None
-        self._roadgraph = None
-        self._ego_track = None
-        self._relevant_tracks = None
+        self._scenario: ArgoverseScenario | None = None
+        self._roadgraph: ArgoverseStaticMap | None = None
+        self._ego_track: Track | None = None
+        self._relevant_tracks: List[Track] | None = None
 
     @property
     def scenario(self: Self):

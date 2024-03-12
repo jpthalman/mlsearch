@@ -4,9 +4,8 @@ from typing_extensions import Self
 import torch
 from torch import nn
 
-from data.config import Dim, POS_SCALE, VEL_SCALE
+from data.config import Dim
 from model.transformer_block import (
-    DynamicLatentQueryAttentionBlock,
     LatentQueryAttentionBlock,
     SelfAttentionBlock,
     TransformerBlock,

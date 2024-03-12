@@ -4,7 +4,6 @@ Run with `python -m train.run` from the project root
 
 import argparse
 import getpass
-from pathlib import Path
 
 import comet_ml
 import torch

@@ -48,21 +48,10 @@ def integrate(state: torch.Tensor, controls_norm: torch.Tensor) -> torch.Tensor:
     )
 
 
-def compute_controls(state: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
-    """
-    state[B, S]
-    next_state[B, S]
-    """
-    rel_gt = relative_positions(state, next_state)
-    curv, arclen = _SegmentCurvAndArclen.apply(rel_gt[:, 0], rel_gt[:, 1])
-    v0 = state[:, 4]
-    v1 = (2 * arclen - v0).relu()
-    accel = v1 - v0
-    controls = torch.cat([accel.unsqueeze(1), curv.unsqueeze(1)], dim=1)
-    return normalize(controls)
-
-
-def relative_positions(state: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
+def relative_positions(
+    state: torch.Tensor,
+    next_state: torch.Tensor,
+) -> torch.Tensor:
     """
     state[B, S]
     next_state[B, S]
@@ -97,48 +86,6 @@ def normalize(controls: torch.Tensor) -> torch.Tensor:
     return torch.cat([accel.unsqueeze(1), curv.unsqueeze(1)], dim=1)
 
 
-def discretize(controls: torch.Tensor) -> torch.Tensor:
-    """
-    controls[..., C]
-    """
-    # Controls should be normalized to the range [0,1]
-    B = (Dim.Cd - 1) // 2
-    accel_bucket = _bucketize(controls[..., 0], B)
-    steer_bucket = _bucketize(controls[..., 1], B)
-    return (Dim.Cd * accel_bucket + steer_bucket).long()
-
-
-def undiscretize(discrete: torch.Tensor) -> torch.Tensor:
-    # Extract discrete acceleration and steering values
-    accel_bucket = discrete // Dim.Cd
-    steer_bucket = discrete % Dim.Cd
-
-    # Reverse the scaling and rounding applied in _bucketize
-    B = (Dim.Cd - 1) // 2
-    accel_continuous = _debucketize(accel_bucket, B)
-    steer_continuous = _debucketize(steer_bucket, B)
-
-    # Combine the continuous values back into the original tensor format
-    return torch.stack([accel_continuous, steer_continuous], dim=-1)
-
-
-def _bucketize(x: torch.Tensor, buckets: int):
-    scaled = 2 * (x - 0.5)
-    sign = torch.sign(scaled)
-    sign[sign == 0] = 1
-    scaled = buckets * torch.sqrt(sign * scaled)
-    return sign * torch.round(scaled) + buckets
-
-
-def _debucketize(x: torch.Tensor, buckets: int):
-    scaled = x - buckets
-    sign = torch.sign(scaled)
-    sign[sign == 0] = 1
-    scaled = sign * (scaled / buckets)**2
-    scaled = scaled / 2 + 0.5
-    return scaled
-
-
 def _transform(x, y, cyaw, syaw, rx, ry):
     dx = cyaw * rx - syaw * ry
     dy = syaw * rx + cyaw * ry
@@ -151,66 +98,6 @@ def _inv_transform(x, y, cyaw, syaw, x1, y1):
     rx = cyaw * dx + syaw * dy
     ry = -syaw * dx + cyaw * dy
     return rx, ry
-
-
-class _SegmentCurvAndArclen(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, y):
-        mask = x.abs() < 0.2
-        z = torch.zeros_like(x)
-        theta = 2 * torch.atan2(y, x)
-        arclen = torch.where(mask, z, x / _Sinc.apply(theta / torch.pi))
-        curv = torch.where(mask, z, theta / arclen)
-        ctx.save_for_backward(x, y, theta, curv, arclen, mask)
-        return curv, arclen
-
-        if x.abs() < 1e-5:
-            z = torch.zeros_like(x)
-            ctx.save_for_backward(z, z, z, z, z)
-            return z, z
-
-        theta = 2 * torch.atan2(y, x)
-        arclen = x / _Sinc.apply(theta)
-        curv = theta / arclen
-        ctx.save_for_backward(x, y, theta, curv, arclen)
-        return curv, arclen
-
-    @staticmethod
-    def backward(ctx, grad_curv, grad_arclen):
-        x, y, theta, curv, arclen, mask = ctx.saved_tensors
-        s = torch.sin(theta)
-        c = torch.cos(theta)
-        D = x**2 + y**2
-
-        dtheta_dx = -2 * y / D
-        dtheta_dy = 2 * x / D
-        darclen_dx = (s * (dtheta_dx - theta) - theta*x*c*dtheta_dx) / s**2
-        darclen_dy = (x*s*dtheta_dy - theta*x*c*dtheta_dy) / s**2
-        dcurv_dx = (x*c*dtheta_dx - s) / x**2
-        dcurv_dy = dtheta_dy*c/x
-
-        out_grad_curv = torch.where(mask, torch.zeros_like(grad_curv), grad_curv * (dcurv_dx + dcurv_dy) / 2)
-        out_grad_arclen = torch.where(mask, torch.zeros_like(grad_arclen), grad_arclen * (darclen_dx + darclen_dy) / 2)
-        return out_grad_curv, out_grad_arclen
-
-        x, y, theta, curv, arclen = ctx.saved_tensors
-        if x == 0:
-            return grad_curv, grad_arclen
-
-        s = torch.sin(theta)
-        c = torch.cos(theta)
-        D = x**2 + y**2
-
-        dtheta_dx = -2 * y / D
-        dtheta_dy = 2 * x / D
-        darclen_dx = (s * (dtheta_dx - theta) - theta*x*c*dtheta_dx) / s**2
-        darclen_dy = (x*s*dtheta_dy - theta*x*c*dtheta_dy) / s**2
-        dcurv_dx = (x*c*dtheta_dx - s) / x**2
-        dcurv_dy = dtheta_dy*c/x
-
-        out_grad_curv = grad_curv + (dcurv_dx + dcurv_dy) / 2
-        out_grad_arclen = grad_arclen + (darclen_dx + darclen_dy) / 2
-        return out_grad_curv, out_grad_arclen
 
 
 class _Sinc(torch.autograd.Function):
