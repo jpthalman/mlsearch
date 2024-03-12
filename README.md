@@ -1,4 +1,4 @@
-# learned_search
+# mlsearch
 
 Download miniconda:
 https://docs.conda.io/projects/miniconda/en/latest/
